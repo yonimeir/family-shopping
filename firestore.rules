@@ -1,0 +1,27 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    function isMember(fid) {
+      return request.auth != null
+        && exists(/databases/$(db)/documents/families/$(fid)/members/$(request.auth.uid));
+    }
+
+    match /families/{fid} {
+      // Only single-doc get – listing/enumerating families is never allowed.
+      allow get, create, update: if isMember(fid);
+
+      // Knowing the (long, random) family id is the invitation.
+      match /members/{uid} {
+        allow create, update: if request.auth != null && request.auth.uid == uid;
+        allow read: if isMember(fid);
+      }
+
+      match /catalog/{itemId} {
+        allow read, write: if isMember(fid);
+      }
+      match /list/{itemId} {
+        allow read, write: if isMember(fid);
+      }
+    }
+  }
+}
