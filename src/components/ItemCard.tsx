@@ -15,11 +15,16 @@ interface Props {
 export const ItemCard = memo(function ItemCard({ item, entry, onToggle, onQty, onNote, onEdit }: Props) {
   const lp = useLongPress(() => onEdit(item));
   const active = Boolean(entry);
+  const isPriority = active || item.isCore;
 
   return (
-    <div className={`card ${active ? 'card-on' : ''}`}>
+    <div
+      className={`bento-card ${active ? 'bento-card-active' : ''} ${item.isCore ? 'bento-card-core' : ''}`}
+      data-priority={isPriority ? 'high' : 'normal'}
+    >
       <button
-        className="card-main"
+        type="button"
+        className="bento-card-surface"
         {...lp.handlers}
         onClick={() => {
           if (lp.wasLong()) return;
@@ -27,36 +32,61 @@ export const ItemCard = memo(function ItemCard({ item, entry, onToggle, onQty, o
         }}
         aria-pressed={active}
       >
-        <div className="card-top-row">
-          <span className="card-name">
+        <div className="bento-card-header">
+          <span className="bento-card-title">
             {item.name}
-            {item.isCore && <span className="core-star" title="מוצר קבוע">★</span>}
+            {item.isCore && (
+              <span className="bento-core-badge" title="מוצר קבוע בתדירות גבוהה">
+                ★
+              </span>
+            )}
           </span>
-          {active && <span className="card-check" aria-hidden>✓</span>}
+          <span className={`bento-check-pill ${active ? 'bento-check-visible' : ''}`} aria-hidden>
+            {active ? '✓' : ''}
+          </span>
         </div>
 
-        <div className="card-meta">
+        <div className="bento-card-footer">
           {!active ? (
-            <span className="card-badge-hint">{formatQty(item.defaultQty, item.defaultUnit)}</span>
+            <span className="bento-hint-badge tabular-nums">
+              {formatQty(item.defaultQty, item.defaultUnit)}
+            </span>
           ) : (
-            entry!.notes && <span className="card-note">💬 {entry!.notes}</span>
+            entry!.notes && (
+              <span className="bento-note-badge" title={entry!.notes}>
+                💬 {entry!.notes}
+              </span>
+            )
           )}
         </div>
       </button>
 
       {active && (
-        <div className="card-controls" onClick={(e) => e.stopPropagation()}>
-          <button className="qty-btn" onClick={() => onQty(item, 1)} aria-label="הוסף כמות">
+        <div className="bento-card-actions" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            className="bento-action-btn bento-action-plus"
+            onClick={() => onQty(item, 1)}
+            aria-label="הוסף כמות"
+          >
             +
           </button>
-          <span className="qty-val">{formatQty(entry!.qty, item.defaultUnit)}</span>
-          <button className="qty-btn" onClick={() => onQty(item, -1)} aria-label="הפחת כמות">
+          <span className="bento-qty-value tabular-nums">
+            {formatQty(entry!.qty, item.defaultUnit)}
+          </span>
+          <button
+            type="button"
+            className="bento-action-btn bento-action-minus"
+            onClick={() => onQty(item, -1)}
+            aria-label="הפחת כמות"
+          >
             −
           </button>
           <button
-            className={`note-btn ${entry!.notes ? 'has-note' : ''}`}
+            type="button"
+            className={`bento-note-btn ${entry!.notes ? 'bento-note-has' : ''}`}
             onClick={() => onNote(item)}
-            aria-label="הוסף הערה"
+            aria-label="הערה למוצר"
             title={entry!.notes || 'הוסף הערה'}
           >
             💬

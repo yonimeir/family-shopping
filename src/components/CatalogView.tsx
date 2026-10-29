@@ -90,7 +90,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
   const presentCats = new Set(sections.map((s) => s.cat.id));
 
   const toolbar = (
-    <div className="toolbar">
+    <div className="bento-toolbar">
       <div className="search-row">
         <div className="search-box">
           <span className="search-icon" aria-hidden>
@@ -100,37 +100,51 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="חיפוש או הוספת מוצר…"
+            placeholder="חיפוש או הוספת מוצר לקטלוג…"
             enterKeyHint="search"
             aria-label="חיפוש מוצר"
           />
           {query && (
-            <button className="search-clear" onClick={() => setQuery('')} aria-label="נקה חיפוש">
+            <button type="button" className="search-clear" onClick={() => setQuery('')} aria-label="נקה חיפוש">
               ✕
             </button>
           )}
         </div>
       </div>
       <div className="chips">
-        <button className={`chip ${filter === 'core' ? 'chip-on' : ''}`} onClick={() => setMode('core')}>
-          ⭐ בדוק מוצרים קבועים
+        <button
+          type="button"
+          className={`bento-chip ${filter === 'core' ? 'bento-chip-core' : ''}`}
+          onClick={() => setMode('core')}
+        >
+          <span>⭐</span>
+          <span>בדוק מוצרים קבועים</span>
         </button>
-        <button className={`chip ${filter === 'cart' ? 'chip-on' : ''}`} onClick={() => setMode('cart')}>
-          🛒 ברשימה ({cartCount})
+        <button
+          type="button"
+          className={`bento-chip ${filter === 'cart' ? 'bento-chip-cart' : ''}`}
+          onClick={() => setMode('cart')}
+        >
+          <span>🛒</span>
+          <span>ברשימה</span>
+          <span className="bento-chip-badge tabular-nums">{cartCount}</span>
         </button>
       </div>
-      <div className="cat-tabs" ref={tabsRef}>
+      <div className="cat-tabs" ref={tabsRef} role="tablist" aria-label="ניווט מחלקות">
         {cats.map((c) => (
           <button
             key={c.id}
+            type="button"
             data-cat={c.id}
-            className={`cat-tab ${activeCat === c.id ? 'cat-tab-on' : ''}`}
+            role="tab"
+            aria-selected={activeCat === c.id}
+            className={`bento-tab ${activeCat === c.id ? 'bento-tab-active' : ''}`}
             disabled={!presentCats.has(c.id)}
             onClick={() => jumpTo(c.id)}
             title={c.name}
           >
-            <span className="cat-tab-icon">{c.icon}</span>
-            <span className="cat-tab-count">
+            <span className="bento-tab-icon">{c.icon}</span>
+            <span className="bento-tab-count tabular-nums">
               {Object.values(state.list).filter((e) => state.catalog[e.itemId]?.categoryId === c.id).length || ''}
             </span>
           </button>
@@ -143,31 +157,51 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
     <>
       {toolbarSlot && createPortal(toolbar, toolbarSlot)}
 
-      <main className="catalog">
+      <main className="bento-catalog">
         {nq && !exactExists && (
-          <button className="add-new" onClick={() => onAddNew(query.trim())}>
-            <span className="add-new-plus">＋</span>
-            <span>
-              הוסף <b>"{query.trim()}"</b> למאגר ולקנייה
+          <button type="button" className="bento-add-tile" onClick={() => onAddNew(query.trim())}>
+            <span className="bento-add-icon">＋</span>
+            <span className="bento-add-label">
+              הוסף את <b>"{query.trim()}"</b> למאגר ולקנייה
             </span>
           </button>
         )}
 
         {filter === 'core' && sections.length === 0 && (
-          <div className="empty">✅ כל המוצרים הקבועים כבר ברשימה!</div>
+          <div className="bento-empty-state">
+            <span className="bento-empty-icon">✅</span>
+            <p>כל המוצרים הקבועים כבר ברשימה!</p>
+          </div>
         )}
-        {filter === 'cart' && sections.length === 0 && <div className="empty">הרשימה ריקה – הקש על מוצרים כדי להוסיף</div>}
-        {filter === 'all' && nq && sections.length === 0 && <div className="empty">לא נמצא "{query}"</div>}
+        {filter === 'cart' && sections.length === 0 && (
+          <div className="bento-empty-state">
+            <span className="bento-empty-icon">🛒</span>
+            <p>הרשימה ריקה – הקש על מוצרים כדי להוסיף</p>
+          </div>
+        )}
+        {filter === 'all' && nq && sections.length === 0 && (
+          <div className="bento-empty-state">
+            <span className="bento-empty-icon">🔎</span>
+            <p>לא נמצא "{query}" במאגר</p>
+          </div>
+        )}
 
         {sections.map(({ cat, groups }) => (
-          <section key={cat.id} id={`cat-${cat.id}`} className="cat-section">
-            <h2 className="cat-title">
-              <span>{cat.icon}</span> {cat.name}
-            </h2>
+          <section key={cat.id} id={`cat-${cat.id}`} className="bento-section">
+            <header className="bento-section-header">
+              <span className="bento-section-icon" aria-hidden>{cat.icon}</span>
+              <h2 className="bento-section-title">{cat.name}</h2>
+            </header>
+
             {groups.map(([sub, its]) => (
-              <div key={sub} className="sub-group">
-                {groups.length > 1 && <h3 className="sub-title">{sub}</h3>}
-                <div className="grid">
+              <div key={sub} className="bento-module">
+                {groups.length > 1 && (
+                  <h3 className="bento-module-title">
+                    <span className="bento-module-bullet" aria-hidden />
+                    {sub}
+                  </h3>
+                )}
+                <div className="bento-grid">
                   {its.map((it) => (
                     <ItemCard
                       key={it.id}
@@ -184,7 +218,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
             ))}
           </section>
         ))}
-        <p className="footer-hint">טיפ: לחיצה ארוכה על מוצר לעריכה או מחיקה</p>
+        <p className="bento-footer-hint">טיפ: לחיצה ארוכה על כרטיס מאפשרת עריכה או מחיקה מהמאגר</p>
       </main>
     </>
   );

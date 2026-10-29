@@ -56,12 +56,13 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
 
   if (total === 0) {
     return (
-      <main className="super">
-        <div className="empty big">
-          <div className="empty-emoji">🛒</div>
-          הרשימה ריקה
-          <button className="btn-primary" onClick={onGoHome}>
-            לבניית הרשימה
+      <main className="super-view">
+        <div className="super-empty">
+          <div className="super-empty-icon" aria-hidden>🛒</div>
+          <h2 className="super-empty-title">הרשימה ריקה לקנייה</h2>
+          <p className="super-empty-desc">סמן מוצרים במצב "בבית" כדי לבנות את מסלול הקנייה</p>
+          <button type="button" className="bento-btn-primary" onClick={onGoHome}>
+            לבניית הרשימה 🏠
           </button>
         </div>
       </main>
@@ -69,53 +70,81 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
   }
 
   return (
-    <main className="super">
-      <div className="progress" aria-label={`נאספו ${done} מתוך ${total}`}>
-        <div className="progress-text">
-          נאספו <b>{done}</b> מתוך <b>{total}</b> מוצרים
-          {done === total && ' 🎉'}
+    <main className="super-view">
+      <div className="super-progress-card" aria-label={`נאספו ${done} מתוך ${total}`}>
+        <div className="super-progress-info">
+          <span className="super-progress-label">התקדמות במסלול</span>
+          <span className="super-progress-numbers tabular-nums">
+            <b>{done}</b> / {total} מוצרים
+            {done === total && ' 🎉'}
+          </span>
         </div>
-        <div className="progress-bar">
-          <div className="progress-fill" style={{ width: `${pct}%` }} />
+        <div className="super-progress-track">
+          <div className="super-progress-bar" style={{ width: `${pct}%` }} />
         </div>
       </div>
 
       {sections.map(({ cat, todo, total: catTotal, got }) =>
         todo.length === 0 ? null : (
-          <section key={cat.id} className="super-section">
-            <h2 className="super-cat">
-              <span>{cat.icon}</span> {cat.name}
-              <span className="super-cat-count">
+          <section key={cat.id} className="super-category-card">
+            <header className="super-category-header">
+              <span className="super-category-icon" aria-hidden>{cat.icon}</span>
+              <h2 className="super-category-title">{cat.name}</h2>
+              <span className="super-category-count tabular-nums">
                 {got.length}/{catTotal}
               </span>
-            </h2>
-            {todo.map(({ e, it }) => (
-              <Row key={e.itemId} e={e} it={it} isNew={e.addedAt > enteredAt && e.addedByDevice !== me} onTap={tap} />
-            ))}
+            </header>
+            <div className="super-rows-container">
+              {todo.map(({ e, it }) => (
+                <SuperRow
+                  key={e.itemId}
+                  e={e}
+                  it={it}
+                  isNew={e.addedAt > enteredAt && e.addedByDevice !== me}
+                  onTap={tap}
+                />
+              ))}
+            </div>
           </section>
         )
       )}
 
       {collected.length > 0 && (
-        <section className="collected">
-          <button className="collected-head" onClick={() => setShowDone((v) => !v)} aria-expanded={showDone}>
-            ✅ נאספו לעגלה ({collected.length}) <span className="chev">{showDone ? '▲' : '▼'}</span>
+        <section className="super-collected-module">
+          <button
+            type="button"
+            className="super-collected-toggle"
+            onClick={() => setShowDone((v) => !v)}
+            aria-expanded={showDone}
+          >
+            <span className="super-collected-title">
+              ✅ נאספו לעגלה (<span className="tabular-nums">{collected.length}</span>)
+            </span>
+            <span className="super-collected-chevron" aria-hidden>
+              {showDone ? '▲' : '▼'}
+            </span>
           </button>
-          {showDone &&
-            collected.map(({ e, it, icon }) => <Row key={e.itemId} e={e} it={it} icon={icon} onTap={tap} />)}
+          {showDone && (
+            <div className="super-rows-container super-rows-collected">
+              {collected.map(({ e, it, icon }) => (
+                <SuperRow key={e.itemId} e={e} it={it} icon={icon} onTap={tap} />
+              ))}
+            </div>
+          )}
         </section>
       )}
 
-      <div className="bottom-bar">
-        <button className="btn-primary btn-wide" onClick={onCheckout}>
-          סיימתי קנייה ✓
+      <div className="super-floating-bar">
+        <button type="button" className="bento-btn-primary super-btn-checkout" onClick={onCheckout}>
+          <span>סיימתי קנייה בסופר</span>
+          <span aria-hidden>✓</span>
         </button>
       </div>
     </main>
   );
 }
 
-function Row({
+function SuperRow({
   e,
   it,
   icon,
@@ -129,20 +158,28 @@ function Row({
   onTap: (id: string) => void;
 }) {
   return (
-    <button className={`row ${e.isPurchased ? 'row-done' : ''}`} onClick={() => onTap(e.itemId)}>
-      <span className="row-box" aria-hidden>
+    <button
+      type="button"
+      className={`super-item-row ${e.isPurchased ? 'super-item-done' : ''}`}
+      onClick={() => onTap(e.itemId)}
+    >
+      <span className="super-checkbox" aria-hidden>
         {e.isPurchased ? '✓' : ''}
       </span>
-      <span className="row-body">
-        <span className="row-name">
-          {icon && <span className="row-icon">{icon}</span>}
-          {it.name}
-          {isNew && <span className="badge-new">🆕 נוסף עכשיו</span>}
+      <div className="super-item-content">
+        <div className="super-item-title-row">
+          {icon && <span className="super-item-icon" aria-hidden>{icon}</span>}
+          <span className="super-item-name">{it.name}</span>
+          {isNew && <span className="super-badge-new">🆕 חדש</span>}
+        </div>
+        {e.notes && <span className="super-item-note">💬 {e.notes}</span>}
+      </div>
+      <span className="super-item-qty tabular-nums">{formatQty(e.qty, it.defaultUnit)}</span>
+      {e.addedBy && (
+        <span className="super-item-author" title={`נוסף ע"י ${e.addedBy}`}>
+          {e.addedBy.slice(0, 1)}
         </span>
-        {e.notes && <span className="row-note">💬 {e.notes}</span>}
-      </span>
-      <span className="row-qty">{formatQty(e.qty, it.defaultUnit)}</span>
-      {e.addedBy && <span className="row-who" title={`נוסף ע"י ${e.addedBy}`}>{e.addedBy.slice(0, 1)}</span>}
+      )}
     </button>
   );
 }
