@@ -27,25 +27,38 @@ export const ItemCard = memo(function ItemCard({ item, entry, onToggle, onQty, o
         }}
         aria-pressed={active}
       >
-        <span className="card-name">
-          {item.isCore && <span className="core-star" aria-label="תדיר">★</span>}
-          {item.name}
-        </span>
-        {!active && <span className="card-hint">{formatQty(item.defaultQty, item.defaultUnit)}</span>}
-        {active && entry!.notes && <span className="card-note">💬 {entry!.notes}</span>}
-        {active && <span className="card-check" aria-hidden>✓</span>}
+        <div className="card-top-row">
+          <span className="card-name">
+            {item.name}
+            {item.isCore && <span className="core-star" title="מוצר קבוע">★</span>}
+          </span>
+          {active && <span className="card-check" aria-hidden>✓</span>}
+        </div>
+
+        <div className="card-meta">
+          {!active ? (
+            <span className="card-badge-hint">{formatQty(item.defaultQty, item.defaultUnit)}</span>
+          ) : (
+            entry!.notes && <span className="card-note">💬 {entry!.notes}</span>
+          )}
+        </div>
       </button>
 
       {active && (
-        <div className="card-controls">
-          <button className="qty-btn" onClick={() => onQty(item, 1)} aria-label="הוסף">
+        <div className="card-controls" onClick={(e) => e.stopPropagation()}>
+          <button className="qty-btn" onClick={() => onQty(item, 1)} aria-label="הוסף כמות">
             +
           </button>
           <span className="qty-val">{formatQty(entry!.qty, item.defaultUnit)}</span>
-          <button className="qty-btn" onClick={() => onQty(item, -1)} aria-label="הפחת">
+          <button className="qty-btn" onClick={() => onQty(item, -1)} aria-label="הפחת כמות">
             −
           </button>
-          <button className={`note-btn ${entry!.notes ? 'has-note' : ''}`} onClick={() => onNote(item)} aria-label="הערה">
+          <button
+            className={`note-btn ${entry!.notes ? 'has-note' : ''}`}
+            onClick={() => onNote(item)}
+            aria-label="הוסף הערה"
+            title={entry!.notes || 'הוסף הערה'}
+          >
             💬
           </button>
         </div>
