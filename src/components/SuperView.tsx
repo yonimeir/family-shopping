@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppState, CatalogItem, ListEntry } from '../types';
 import { formatQty, getDeviceId, sortedCategories } from '../lib/util';
+import { getItemIcon } from '../lib/itemIcons';
 
 interface Props {
   state: AppState;
@@ -100,6 +101,7 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
                   key={e.itemId}
                   e={e}
                   it={it}
+                  icon={getItemIcon(it.name, it.categoryId)}
                   isNew={e.addedAt > enteredAt && e.addedByDevice !== me}
                   onTap={tap}
                 />
@@ -126,8 +128,8 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
           </button>
           {showDone && (
             <div className="super-rows-container super-rows-collected">
-              {collected.map(({ e, it, icon }) => (
-                <SuperRow key={e.itemId} e={e} it={it} icon={icon} onTap={tap} />
+              {collected.map(({ e, it }) => (
+                <SuperRow key={e.itemId} e={e} it={it} icon={getItemIcon(it.name, it.categoryId)} onTap={tap} />
               ))}
             </div>
           )}
