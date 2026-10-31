@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
 :root {
-  /* Ultra-Premium Clean OKLCH Palette */
-  --bg-app: oklch(0.965 0.006 240);
+  /* Minimal High-Craft OKLCH Palette */
+  --bg-app: oklch(0.968 0.006 240);
   --surface-card: oklch(1 0 0);
-  --surface-subtle: oklch(0.950 0.008 240);
+  --surface-subtle: oklch(0.952 0.008 240);
   --surface-elevated: oklch(1 0 0);
 
   --text-main: oklch(0.18 0.02 240);
@@ -25,14 +25,14 @@
 
   --star-gold: oklch(0.74 0.18 75);
 
-  --radius-app-card: 18px;
+  --radius-app-card: 16px;
   --radius-bubble: 999px;
-  --top-header-height: 128px;
+  --top-header-height: 124px;
 
-  /* Premium Inset Lighting */
+  /* Inset Lighting */
   --card-highlight: inset 0 1px 0 0 rgba(255, 255, 255, 0.95);
-  --card-shadow: 0 2px 6px -1px rgba(15, 23, 42, 0.04), 0 1px 3px 0 rgba(15, 23, 42, 0.02), var(--card-highlight);
-  --card-active-shadow: 0 4px 14px -2px rgba(16, 185, 129, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  --card-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.03), var(--card-highlight);
+  --card-active-shadow: 0 3px 10px -2px rgba(16, 185, 129, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.8);
 
   font-family: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   color: var(--text-main);
@@ -60,12 +60,12 @@ input, textarea { font: inherit; color: inherit; }
   box-shadow: 0 0 50px rgba(0, 0, 0, 0.04);
 }
 
-/* ---------- Top Bar (iOS Dynamic Header) ---------- */
+/* ---------- Top Bar (iOS Clean Header) ---------- */
 .topbar {
   position: sticky;
   inset-block-start: 0;
   z-index: 40;
-  background: rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.90);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border-block-end: 1px solid var(--border-hairline);
@@ -99,7 +99,7 @@ input, textarea { font: inherit; color: inherit; }
   justify-content: center;
   gap: 6px;
   color: var(--text-muted);
-  transition: transform 140ms ease, background 140ms ease, color 140ms ease;
+  transition: transform 120ms ease, background 140ms ease, color 140ms ease;
 }
 .mode-toggle button:active { transform: scale(0.97); }
 .mode-toggle button.on {
@@ -152,7 +152,7 @@ input, textarea { font: inherit; color: inherit; }
 .sync-offline { background: #ef4444; }
 .sync-local { background: #94a3b8; }
 
-/* ---------- Toolbar (Spotlight Search & Chips) ---------- */
+/* ---------- Toolbar (Search & Category Navigation) ---------- */
 .bento-toolbar {
   padding-block-start: 2px;
   padding-block-end: 12px;
@@ -282,7 +282,7 @@ input, textarea { font: inherit; color: inherit; }
 }
 .bento-tab-count:empty { display: none; }
 
-/* ---------- Catalog Body & Modules ---------- */
+/* ---------- Catalog Body & Grid ---------- */
 .bento-catalog {
   padding-block: 10px 48px;
   padding-inline: 14px;
@@ -298,10 +298,10 @@ input, textarea { font: inherit; color: inherit; }
   margin-block: 18px 10px;
   padding-inline: 4px;
 }
-.bento-section-icon { font-size: 24px; }
+.bento-section-icon { font-size: 22px; }
 .bento-section-title {
   margin: 0;
-  font-size: 19px;
+  font-size: 18px;
   font-weight: 700;
   color: var(--text-main);
   letter-spacing: -0.01em;
@@ -338,8 +338,8 @@ input, textarea { font: inherit; color: inherit; }
   }
 }
 
-/* ---------- High-Craft App Cards (Wolt / Apple Quality) ---------- */
-.app-card {
+/* ---------- Clean Minimal Cards (No Cartoonish Emojis) ---------- */
+.clean-card {
   background: var(--surface-card);
   border: 1px solid var(--border-hairline);
   border-radius: var(--radius-app-card);
@@ -348,92 +348,81 @@ input, textarea { font: inherit; color: inherit; }
   flex-direction: column;
   overflow: hidden;
   text-align: start;
-  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
+  transition: transform 120ms ease, background 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
-.app-card:active { transform: scale(0.985); }
+.clean-card:active { transform: scale(0.985); }
 
-.app-card-body {
+.clean-card-body {
   text-align: start;
   padding: 12px 14px;
+  min-height: 72px;
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 8px;
   user-select: none;
   -webkit-user-select: none;
 }
 
-.app-card-avatar-wrap {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.clean-card-header {
   width: 100%;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
 }
-.app-card-emoji {
-  font-size: 32px;
-  line-height: 1;
-  width: 44px;
-  height: 44px;
-  background: var(--surface-subtle);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
+.clean-card-title {
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-main);
   display: flex;
   align-items: center;
-  justify-content: center;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  flex-wrap: wrap;
+  gap: 4px;
 }
-.app-card-star-pill {
+.clean-card-star {
   color: var(--star-gold);
-  font-size: 15px;
-  margin-inline-start: auto;
-  margin-inline-end: 4px;
+  font-size: 13px;
+  margin-inline-start: 2px;
 }
-.app-card-check {
-  width: 22px;
-  height: 22px;
+.clean-card-check {
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
   border: 1.5px solid var(--border-hairline);
   background: var(--surface-card);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 900;
   color: transparent;
+  flex: 0 0 auto;
   transition: all 140ms ease;
 }
-.app-card-check-on {
+.clean-card-check-on {
   background: var(--brand-emerald);
   border-color: var(--brand-emerald);
   color: #fff;
   box-shadow: 0 2px 6px rgba(16, 185, 129, 0.35);
 }
 
-.app-card-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.app-card-title {
-  font-size: 15px;
-  font-weight: 700;
-  line-height: 1.3;
-  color: var(--text-main);
-}
-.app-card-meta {
+.clean-card-meta {
+  width: 100%;
   display: flex;
   align-items: center;
 }
-.app-card-unit-badge {
+.clean-card-unit {
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--text-muted);
   background: var(--surface-subtle);
-  padding-block: 2px;
-  padding-inline: 8px;
+  padding: 2px 8px;
   border-radius: 6px;
 }
-.app-card-note-badge {
+.clean-card-note {
   font-size: 11px;
   color: var(--cart-active-text);
   font-style: italic;
@@ -442,29 +431,25 @@ input, textarea { font: inherit; color: inherit; }
   white-space: nowrap;
 }
 
-/* Active State (Item In Cart) */
-.app-card-active {
+/* Selected in cart */
+.clean-card-active {
   background: var(--cart-active-bg);
   border-color: var(--cart-active-border);
   box-shadow: var(--card-active-shadow);
 }
-.app-card-active .app-card-title {
+.clean-card-active .clean-card-title {
+  font-weight: 700;
   color: var(--cart-active-text);
 }
-.app-card-active .app-card-emoji {
-  background: rgba(255, 255, 255, 0.7);
-  border-color: rgba(16, 185, 129, 0.2);
-}
 
-/* Stepper Controls on Selected Card */
-.app-card-stepper {
+.clean-card-controls {
   display: flex;
   align-items: center;
   gap: 4px;
   padding-block-end: 10px;
   padding-inline: 10px;
 }
-.app-stepper-btn {
+.clean-stepper-btn {
   width: 36px;
   height: 36px;
   border-radius: 10px;
@@ -479,8 +464,8 @@ input, textarea { font: inherit; color: inherit; }
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: transform 100ms ease;
 }
-.app-stepper-btn:active { transform: scale(0.92); background: var(--brand-emerald-light); }
-.app-stepper-val {
+.clean-stepper-btn:active { transform: scale(0.92); background: var(--brand-emerald-light); }
+.clean-stepper-value {
   flex: 1;
   text-align: center;
   font-weight: 800;
@@ -488,7 +473,7 @@ input, textarea { font: inherit; color: inherit; }
   white-space: nowrap;
   color: var(--cart-active-text);
 }
-.app-stepper-note {
+.clean-note-btn {
   width: 36px;
   height: 36px;
   border-radius: 10px;
@@ -498,7 +483,8 @@ input, textarea { font: inherit; color: inherit; }
   justify-content: center;
   opacity: 0.6;
 }
-.app-stepper-note-active {
+.clean-note-btn:active { transform: scale(0.92); }
+.clean-note-btn-has {
   opacity: 1;
   background: #fff;
   border: 1px solid var(--cart-active-border);
@@ -538,7 +524,7 @@ input, textarea { font: inherit; color: inherit; }
   margin-block-start: 24px;
 }
 
-/* ---------- Supermarket Mode (Thumb Execution) ---------- */
+/* ---------- Supermarket Mode (Clean Checklist) ---------- */
 .super-view {
   padding-block: 0 calc(110px + env(safe-area-inset-bottom));
   padding-inline: 14px;
@@ -627,14 +613,14 @@ input, textarea { font: inherit; color: inherit; }
   border: 1px solid var(--border-hairline);
   border-radius: 14px;
   padding: 12px 14px;
-  min-height: 60px;
+  min-height: 56px;
   transition: transform 120ms ease, opacity 140ms ease, background 140ms ease;
 }
 .super-item-row:active { transform: scale(0.985); }
 .super-checkbox {
   flex: 0 0 auto;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: 8px;
   border: 2px solid oklch(0.70 0.02 240);
   background: #fff;
@@ -643,7 +629,7 @@ input, textarea { font: inherit; color: inherit; }
   justify-content: center;
   font-weight: 900;
   color: #fff;
-  font-size: 16px;
+  font-size: 15px;
   transition: all 140ms ease;
 }
 .super-item-content {
@@ -659,10 +645,9 @@ input, textarea { font: inherit; color: inherit; }
   align-items: center;
   gap: 6px;
 }
-.super-item-icon { font-size: 20px; }
 .super-item-name {
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.3;
 }
 .super-item-note { font-size: 12px; color: oklch(0.50 0.14 75); }
@@ -782,7 +767,7 @@ input, textarea { font: inherit; color: inherit; }
   font-weight: 600;
 }
 
-/* ---------- Elevated Sheet (Modal / Settings) ---------- */
+/* ---------- Sheet (Modal) ---------- */
 .sheet-backdrop {
   position: fixed;
   inset: 0;

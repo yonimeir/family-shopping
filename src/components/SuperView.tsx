@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppState, CatalogItem, ListEntry } from '../types';
 import { formatQty, getDeviceId, sortedCategories } from '../lib/util';
-import { getItemIcon } from '../lib/itemIcons';
 
 interface Props {
   state: AppState;
@@ -52,7 +51,7 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
     })
     .filter((s) => s.total > 0);
 
-  const collected = sections.flatMap((s) => s.got.map((r) => ({ ...r, icon: s.cat.icon })));
+  const collected = sections.flatMap((s) => s.got);
   const pct = total ? Math.round((done / total) * 100) : 0;
 
   if (total === 0) {
@@ -74,9 +73,9 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
     <main className="super-view">
       <div className="super-progress-card" aria-label={`נאספו ${done} מתוך ${total}`}>
         <div className="super-progress-info">
-          <span className="super-progress-label">התקדמות במסלול</span>
+          <span className="super-progress-label">התקדמות בסופר</span>
           <span className="super-progress-numbers tabular-nums">
-            <b>{done}</b> / {total} מוצרים
+            <b>{done}</b> מתוך <b>{total}</b> מוצרים
             {done === total && ' 🎉'}
           </span>
         </div>
@@ -101,7 +100,6 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
                   key={e.itemId}
                   e={e}
                   it={it}
-                  icon={getItemIcon(it.name, it.categoryId)}
                   isNew={e.addedAt > enteredAt && e.addedByDevice !== me}
                   onTap={tap}
                 />
@@ -120,7 +118,7 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
             aria-expanded={showDone}
           >
             <span className="super-collected-title">
-              ✅ נאספו לעגלה (<span className="tabular-nums">{collected.length}</span>)
+              ✓ נאספו לעגלה (<span className="tabular-nums">{collected.length}</span>)
             </span>
             <span className="super-collected-chevron" aria-hidden>
               {showDone ? '▲' : '▼'}
@@ -129,7 +127,7 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
           {showDone && (
             <div className="super-rows-container super-rows-collected">
               {collected.map(({ e, it }) => (
-                <SuperRow key={e.itemId} e={e} it={it} icon={getItemIcon(it.name, it.categoryId)} onTap={tap} />
+                <SuperRow key={e.itemId} e={e} it={it} onTap={tap} />
               ))}
             </div>
           )}
@@ -149,13 +147,11 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
 function SuperRow({
   e,
   it,
-  icon,
   isNew,
   onTap,
 }: {
   e: ListEntry;
   it: CatalogItem;
-  icon?: string;
   isNew?: boolean;
   onTap: (id: string) => void;
 }) {
@@ -170,9 +166,8 @@ function SuperRow({
       </span>
       <div className="super-item-content">
         <div className="super-item-title-row">
-          {icon && <span className="super-item-icon" aria-hidden>{icon}</span>}
           <span className="super-item-name">{it.name}</span>
-          {isNew && <span className="super-badge-new">🆕 חדש</span>}
+          {isNew && <span className="super-badge-new">חדש</span>}
         </div>
         {e.notes && <span className="super-item-note">💬 {e.notes}</span>}
       </div>

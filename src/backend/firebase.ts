@@ -1,10 +1,10 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, type User } from 'firebase/auth';
+import { getApp, getApps, initializeApp } from 'firebase/app';
+import { getAuth, signInAnonymously } from 'firebase/auth';
 import {
   collection,
   deleteDoc,
   doc,
-  getDoc,
+  getFirestore,
   initializeFirestore,
   onSnapshot,
   persistentLocalCache,
@@ -12,96 +12,119 @@ import {
   setDoc,
   updateDoc,
   writeBatch,
+  type Firestore,
 } from 'firebase/firestore';
-import { SEED_CATEGORIES, SEED_ITEMS, SEED_VERSION } from '../data/seed';
+import { SEED_CATEGORIES, SEED_ITEMS } from '../data/seed';
 import type { AppState, Backend, CatalogItem, Category, ListEntry } from '../types';
 import { firebaseConfig } from './config';
 
-/**
- * Firestore layout:
- *   families/{familyId}                 { categories[], seedVersion, createdAt }
- *   families/{familyId}/members/{uid}   { joinedAt }
- *   families/{familyId}/catalog/{id}    CatalogItem
- *   families/{familyId}/list/{id}       ListEntry   (exists only while in cart)
- *
- * One document per item + field-level updates => no lost writes when both partners tap at once.
- * persistentLocalCache => works offline, writes queue and sync later; snapshots fire instantly
- * with local writes (built-in optimistic UI).
- */
 export async function createFirebaseBackend(familyId: string): Promise<Backend> {
-  const app = initializeApp(firebaseConfig);
+  const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
   const auth = getAuth(app);
-  const db = initializeFirestore(app, {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
-    ignoreUndefinedProperties: true,
-  });
 
-  const user: User = auth.currentUser ?? (await waitForUser(auth)) ?? (await signInAnonymously(auth)).user;
+  let db: Firestore;
+  try {
+    db = initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+      ignoreUndefinedProperties: true,
+    });
+  } catch {
+    db = getFirestore(app);
+  }
+
+  // Ensure anonymous authentication
+  try {
+    if (!auth.currentUser) {
+      await signInAnonymously(auth);
+    }
+  } catch (err) {
+    console.warn('Anonymous auth note:', err);
+  }
 
   const familyRef = doc(db, 'families', familyId);
   const catalogCol = collection(familyRef, 'catalog');
   const listCol = collection(familyRef, 'list');
 
-  // Register membership once per device (needs network the first time only).
-  const joinedKey = `fs:joined:${familyId}:${user.uid}`;
-  if (!localStorage.getItem(joinedKey)) {
-    await setDoc(doc(familyRef, 'members', user.uid), { joinedAt: Date.now() }, { merge: true });
-    localStorage.setItem(joinedKey, '1');
-  }
+  // Base catalog in-memory seed (always available immediately, zero latency)
+  const baseCatalog: Record<string, CatalogItem> = Object.fromEntries(
+    SEED_ITEMS.map((item) => [item.id, item])
+  );
 
-  // Seed the catalog the first time this family is opened.
-  try {
-    const snap = await getDoc(familyRef);
-    if (!snap.exists()) {
-      const batch = writeBatch(db);
-      batch.set(familyRef, { categories: SEED_CATEGORIES, seedVersion: SEED_VERSION, createdAt: Date.now() });
-      for (const item of SEED_ITEMS) batch.set(doc(catalogCol, item.id), item);
-      await batch.commit();
-    }
-  } catch (e) {
-    console.warn('Seed check skipped (offline?)', e);
-  }
-
-  let latest: AppState = { ready: false, categories: [], catalog: {}, list: {} };
+  let latest: AppState = {
+    ready: true,
+    categories: SEED_CATEGORIES,
+    catalog: { ...baseCatalog },
+    list: {},
+  };
 
   return {
     kind: 'firebase',
     subscribe(cb, onSync) {
-      const got = { family: false, catalog: false, list: false };
-      const pending = { family: false, catalog: false, list: false };
-      const push = () => {
-        latest = { ...latest, ready: got.family && got.catalog && got.list };
+      let customCatalog: Record<string, CatalogItem> = {};
+      let currentList: Record<string, ListEntry> = {};
+      let categories = SEED_CATEGORIES;
+
+      const push = (pendingWrites = false) => {
+        latest = {
+          ready: true,
+          categories,
+          catalog: { ...baseCatalog, ...customCatalog },
+          list: currentList,
+        };
         cb(latest);
-        const anyPending = pending.family || pending.catalog || pending.list;
-        onSync?.(!navigator.onLine ? 'offline' : anyPending ? 'pending' : 'synced');
+        onSync?.(!navigator.onLine ? 'offline' : pendingWrites ? 'pending' : 'synced');
       };
-      const onNet = () => push();
+
+      // Push initial state immediately so the UI is responsive from millisecond 0
+      push(false);
+
+      const onNet = () => push(false);
       window.addEventListener('online', onNet);
       window.addEventListener('offline', onNet);
 
-      const u1 = onSnapshot(familyRef, { includeMetadataChanges: true }, (s) => {
-        got.family = true;
-        pending.family = s.metadata.hasPendingWrites;
-        const cats = (s.data()?.categories as Category[] | undefined) ?? SEED_CATEGORIES;
-        latest = { ...latest, categories: cats };
-        push();
-      });
-      const u2 = onSnapshot(catalogCol, { includeMetadataChanges: true }, (s) => {
-        got.catalog = true;
-        pending.catalog = s.metadata.hasPendingWrites;
-        const catalog: Record<string, CatalogItem> = {};
-        s.forEach((d) => (catalog[d.id] = d.data() as CatalogItem));
-        latest = { ...latest, catalog };
-        push();
-      });
-      const u3 = onSnapshot(listCol, { includeMetadataChanges: true }, (s) => {
-        got.list = true;
-        pending.list = s.metadata.hasPendingWrites;
-        const list: Record<string, ListEntry> = {};
-        s.forEach((d) => (list[d.id] = d.data() as ListEntry));
-        latest = { ...latest, list };
-        push();
-      });
+      // Listen to family config (custom category orders)
+      const u1 = onSnapshot(
+        familyRef,
+        { includeMetadataChanges: true },
+        (snap) => {
+          if (snap.exists() && snap.data()?.categories) {
+            categories = snap.data().categories as Category[];
+          }
+          push(snap.metadata.hasPendingWrites);
+        },
+        (err) => console.error('Firestore family snapshot error:', err)
+      );
+
+      // Listen to custom catalog items added by the family
+      const u2 = onSnapshot(
+        catalogCol,
+        { includeMetadataChanges: true },
+        (snap) => {
+          const items: Record<string, CatalogItem> = {};
+          snap.forEach((d) => {
+            items[d.id] = d.data() as CatalogItem;
+          });
+          customCatalog = items;
+          push(snap.metadata.hasPendingWrites);
+        },
+        (err) => console.error('Firestore catalog snapshot error:', err)
+      );
+
+      // Listen to the active shopping list in real-time
+      const u3 = onSnapshot(
+        listCol,
+        { includeMetadataChanges: true },
+        (snap) => {
+          const list: Record<string, ListEntry> = {};
+          snap.forEach((d) => {
+            list[d.id] = d.data() as ListEntry;
+          });
+          currentList = list;
+          push(snap.metadata.hasPendingWrites);
+        },
+        (err) => console.error('Firestore list snapshot error:', err)
+      );
+
       return () => {
         u1();
         u2();
@@ -110,35 +133,70 @@ export async function createFirebaseBackend(familyId: string): Promise<Backend> 
         window.removeEventListener('offline', onNet);
       };
     },
-    // Writes are fire-and-forget: the local cache applies them instantly; awaiting would hang offline.
-    setEntry: (entry) => (void setDoc(doc(listCol, entry.itemId), entry), Promise.resolve()),
-    patchEntry: (itemId, patch) => (void updateDoc(doc(listCol, itemId), patch).catch(console.warn), Promise.resolve()),
-    removeEntry: (itemId) => (void deleteDoc(doc(listCol, itemId)), Promise.resolve()),
-    upsertCatalogItem: (item) => (void setDoc(doc(catalogCol, item.id), item), Promise.resolve()),
-    deleteCatalogItem: (id) => {
-      const b = writeBatch(db);
-      b.delete(doc(catalogCol, id));
-      b.delete(doc(listCol, id));
-      void b.commit();
-      return Promise.resolve();
-    },
-    saveCategories: (categories) => (void setDoc(familyRef, { categories }, { merge: true }), Promise.resolve()),
-    checkout: (mode) => {
-      const b = writeBatch(db);
-      for (const e of Object.values(latest.list)) {
-        if (mode === 'resetAll' || e.isPurchased) b.delete(doc(listCol, e.itemId));
+
+    setEntry: async (entry) => {
+      try {
+        await setDoc(doc(listCol, entry.itemId), entry);
+      } catch (err) {
+        console.error('Failed to set list entry:', err);
       }
-      void b.commit();
-      return Promise.resolve();
+    },
+
+    patchEntry: async (itemId, patch) => {
+      try {
+        await updateDoc(doc(listCol, itemId), patch);
+      } catch (err) {
+        console.error('Failed to patch list entry:', err);
+      }
+    },
+
+    removeEntry: async (itemId) => {
+      try {
+        await deleteDoc(doc(listCol, itemId));
+      } catch (err) {
+        console.error('Failed to remove list entry:', err);
+      }
+    },
+
+    upsertCatalogItem: async (item) => {
+      try {
+        await setDoc(doc(catalogCol, item.id), item);
+      } catch (err) {
+        console.error('Failed to upsert catalog item:', err);
+      }
+    },
+
+    deleteCatalogItem: async (id) => {
+      try {
+        const b = writeBatch(db);
+        b.delete(doc(catalogCol, id));
+        b.delete(doc(listCol, id));
+        await b.commit();
+      } catch (err) {
+        console.error('Failed to delete catalog item:', err);
+      }
+    },
+
+    saveCategories: async (cats) => {
+      try {
+        await setDoc(familyRef, { categories: cats }, { merge: true });
+      } catch (err) {
+        console.error('Failed to save categories:', err);
+      }
+    },
+
+    checkout: async (mode) => {
+      try {
+        const b = writeBatch(db);
+        for (const e of Object.values(latest.list)) {
+          if (mode === 'resetAll' || e.isPurchased) {
+            b.delete(doc(listCol, e.itemId));
+          }
+        }
+        await b.commit();
+      } catch (err) {
+        console.error('Failed to checkout:', err);
+      }
     },
   };
-}
-
-function waitForUser(auth: ReturnType<typeof getAuth>): Promise<User | null> {
-  return new Promise((resolve) => {
-    const unsub = auth.onAuthStateChanged((u) => {
-      unsub();
-      resolve(u);
-    });
-  });
 }

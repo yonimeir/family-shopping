@@ -47,6 +47,7 @@ export function formatQty(qty: number, unit: string): string {
 // ---------- Family identity ----------
 const FAMILY_KEY = 'fs:familyId';
 const NAME_KEY = 'fs:myName';
+export const DEFAULT_FAMILY_ID = 'meir-family';
 
 function randomId(len = 20) {
   const abc = 'abcdefghijkmnpqrstuvwxyz23456789';
@@ -54,11 +55,17 @@ function randomId(len = 20) {
   return Array.from(bytes, (b) => abc[b % abc.length]).join('');
 }
 
-/** URL ?f=<id> wins (partner opened the shared link), then localStorage, else create a new family. */
+/**
+ * Resolves the family ID.
+ * Priority:
+ * 1. URL parameter (?f=<id>)
+ * 2. Stored ID in localStorage
+ * 3. DEFAULT_FAMILY_ID ('meir-family') so all devices of the family connect to the SAME list immediately!
+ */
 export function resolveFamilyId(): string {
   const url = new URL(location.href);
   const fromUrl = url.searchParams.get('f');
-  if (fromUrl && /^[a-z0-9]{12,40}$/.test(fromUrl)) {
+  if (fromUrl && /^[a-z0-9_-]{3,40}$/i.test(fromUrl)) {
     localStorage.setItem(FAMILY_KEY, fromUrl);
     url.searchParams.delete('f');
     history.replaceState(null, '', url.toString());
@@ -66,7 +73,7 @@ export function resolveFamilyId(): string {
   }
   let id = localStorage.getItem(FAMILY_KEY);
   if (!id) {
-    id = randomId();
+    id = DEFAULT_FAMILY_ID;
     localStorage.setItem(FAMILY_KEY, id);
   }
   return id;
@@ -77,7 +84,7 @@ export function familyLink(familyId: string) {
 }
 
 export function switchFamily(idOrLink: string): boolean {
-  const m = idOrLink.trim().match(/(?:[?&]f=)?([a-z0-9]{12,40})\s*$/);
+  const m = idOrLink.trim().match(/(?:[?&]f=)?([a-z0-9_-]{3,40})\s*$/i);
   if (!m) return false;
   localStorage.setItem(FAMILY_KEY, m[1]);
   location.reload();
