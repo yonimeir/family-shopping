@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppState, CatalogItem, ListEntry } from '../types';
 import { formatQty, getDeviceId, sortedCategories } from '../lib/util';
+import { getProductPackshot } from '../lib/productImages';
+import { IconCart, IconHome, IconNote, IconCheck } from './Icons';
 
 interface Props {
   state: AppState;
@@ -13,7 +15,6 @@ interface Props {
 const HOLD_MS = 650;
 
 export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onGoHome }: Props) {
-  // Items just tapped stay in place briefly so the list doesn't jump under your thumb.
   const [held, setHeld] = useState<Set<string>>(new Set());
   const [showDone, setShowDone] = useState(false);
   const me = useMemo(getDeviceId, []);
@@ -58,11 +59,14 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
     return (
       <main className="super-view">
         <div className="super-empty">
-          <div className="super-empty-icon" aria-hidden>🛒</div>
-          <h2 className="super-empty-title">הרשימה ריקה לקנייה</h2>
+          <div className="super-empty-icon text-slate-400" aria-hidden>
+            <IconCart className="w-12 h-12 mx-auto" />
+          </div>
+          <h2 className="super-empty-title font-frank">הרשימה ריקה לקנייה</h2>
           <p className="super-empty-desc">סמן מוצרים במצב "בבית" כדי לבנות את מסלול הקנייה</p>
-          <button type="button" className="bento-btn-primary" onClick={onGoHome}>
-            לבניית הרשימה 🏠
+          <button type="button" className="bento-btn-primary flex items-center justify-center gap-2 mx-auto" onClick={onGoHome}>
+            <IconHome className="w-4 h-4" />
+            <span>לבניית הרשימה</span>
           </button>
         </div>
       </main>
@@ -88,8 +92,7 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
         todo.length === 0 ? null : (
           <section key={cat.id} className="super-category-card">
             <header className="super-category-header">
-              <span className="super-category-icon" aria-hidden>{cat.icon}</span>
-              <h2 className="super-category-title">{cat.name}</h2>
+              <h2 className="super-category-title font-frank">{cat.name}</h2>
               <span className="super-category-count tabular-nums">
                 {got.length}/{catTotal}
               </span>
@@ -118,7 +121,8 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
             aria-expanded={showDone}
           >
             <span className="super-collected-title">
-              ✓ נאספו לעגלה (<span className="tabular-nums">{collected.length}</span>)
+              <IconCheck className="inline-block w-4 h-4 text-emerald-500 me-1" />
+              נאספו לעגלה (<span className="tabular-nums">{collected.length}</span>)
             </span>
             <span className="super-collected-chevron" aria-hidden>
               {showDone ? '▲' : '▼'}
@@ -135,9 +139,9 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
       )}
 
       <div className="super-floating-bar">
-        <button type="button" className="bento-btn-primary super-btn-checkout" onClick={onCheckout}>
+        <button type="button" className="bento-btn-primary super-btn-checkout flex items-center justify-center gap-2" onClick={onCheckout}>
           <span>סיימתי קנייה בסופר</span>
-          <span aria-hidden>✓</span>
+          <IconCheck className="w-5 h-5" />
         </button>
       </div>
     </main>
@@ -155,6 +159,8 @@ function SuperRow({
   isNew?: boolean;
   onTap: (id: string) => void;
 }) {
+  const packshot = getProductPackshot(it.name, it.categoryId);
+
   return (
     <button
       type="button"
@@ -162,14 +168,22 @@ function SuperRow({
       onClick={() => onTap(e.itemId)}
     >
       <span className="super-checkbox" aria-hidden>
-        {e.isPurchased ? '✓' : ''}
+        {e.isPurchased ? <IconCheck className="w-3.5 h-3.5 text-white" /> : null}
       </span>
+      <div className="super-item-thumb">
+        <img src={packshot} alt={it.name} loading="lazy" className="super-item-img" />
+      </div>
       <div className="super-item-content">
         <div className="super-item-title-row">
-          <span className="super-item-name">{it.name}</span>
+          <span className="super-item-name font-frank">{it.name}</span>
           {isNew && <span className="super-badge-new">חדש</span>}
         </div>
-        {e.notes && <span className="super-item-note">💬 {e.notes}</span>}
+        {e.notes && (
+          <span className="super-item-note">
+            <IconNote className="inline-block w-3 h-3 me-1 opacity-70" />
+            {e.notes}
+          </span>
+        )}
       </div>
       <span className="super-item-qty tabular-nums">{formatQty(e.qty, it.defaultUnit)}</span>
       {e.addedBy && (

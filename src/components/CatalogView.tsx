@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import type { AppState, CatalogItem } from '../types';
 import { groupBySub, matches, normalize, sortedCategories } from '../lib/util';
 import { ItemCard } from './ItemCard';
+import { IconSearch, IconStar, IconCart, IconPlus, IconClose, IconCheck } from './Icons';
 
 type Filter = 'all' | 'core' | 'cart';
 
@@ -19,7 +20,6 @@ interface Props {
 export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdit, onAddNew }: Props) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
-  // Snapshot of the "forgot something?" list, so items don't vanish the moment you tap them.
   const [coreSnapshot, setCoreSnapshot] = useState<Set<string>>(new Set());
   const [cartSnapshot, setCartSnapshot] = useState<Set<string>>(new Set());
   const [activeCat, setActiveCat] = useState<string>('');
@@ -94,7 +94,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
       <div className="search-row">
         <div className="search-box">
           <span className="search-icon" aria-hidden>
-            🔍
+            <IconSearch className="w-4 h-4 text-slate-400" />
           </span>
           <input
             type="search"
@@ -106,7 +106,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
           />
           {query && (
             <button type="button" className="search-clear" onClick={() => setQuery('')} aria-label="נקה חיפוש">
-              ✕
+              <IconClose className="w-4 h-4" />
             </button>
           )}
         </div>
@@ -117,7 +117,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
           className={`bento-chip ${filter === 'core' ? 'bento-chip-core' : ''}`}
           onClick={() => setMode('core')}
         >
-          <span>⭐</span>
+          <IconStar className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
           <span>בדוק מוצרים קבועים</span>
         </button>
         <button
@@ -125,30 +125,33 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
           className={`bento-chip ${filter === 'cart' ? 'bento-chip-cart' : ''}`}
           onClick={() => setMode('cart')}
         >
-          <span>🛒</span>
+          <IconCart className="w-3.5 h-3.5" />
           <span>ברשימה</span>
           <span className="bento-chip-badge tabular-nums">{cartCount}</span>
         </button>
       </div>
       <div className="cat-tabs" ref={tabsRef} role="tablist" aria-label="ניווט מחלקות">
-        {cats.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            data-cat={c.id}
-            role="tab"
-            aria-selected={activeCat === c.id}
-            className={`bento-tab ${activeCat === c.id ? 'bento-tab-active' : ''}`}
-            disabled={!presentCats.has(c.id)}
-            onClick={() => jumpTo(c.id)}
-            title={c.name}
-          >
-            <span className="bento-tab-icon">{c.icon}</span>
-            <span className="bento-tab-count tabular-nums">
-              {Object.values(state.list).filter((e) => state.catalog[e.itemId]?.categoryId === c.id).length || ''}
-            </span>
-          </button>
-        ))}
+        {cats.map((c) => {
+          const countInCat = Object.values(state.list).filter((e) => state.catalog[e.itemId]?.categoryId === c.id).length;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              data-cat={c.id}
+              role="tab"
+              aria-selected={activeCat === c.id}
+              className={`bento-tab ${activeCat === c.id ? 'bento-tab-active' : ''}`}
+              disabled={!presentCats.has(c.id)}
+              onClick={() => jumpTo(c.id)}
+              title={c.name}
+            >
+              <span className="bento-tab-label">{c.name}</span>
+              {countInCat > 0 && (
+                <span className="bento-tab-count tabular-nums">{countInCat}</span>
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -160,7 +163,9 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
       <main className="bento-catalog">
         {nq && !exactExists && (
           <button type="button" className="bento-add-tile" onClick={() => onAddNew(query.trim())}>
-            <span className="bento-add-icon">＋</span>
+            <span className="bento-add-icon">
+              <IconPlus className="w-4 h-4" />
+            </span>
             <span className="bento-add-label">
               הוסף את <b>"{query.trim()}"</b> למאגר ולקנייה
             </span>
@@ -169,19 +174,25 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
 
         {filter === 'core' && sections.length === 0 && (
           <div className="bento-empty-state">
-            <span className="bento-empty-icon">✅</span>
+            <span className="bento-empty-icon text-emerald-500">
+              <IconCheck className="w-8 h-8 mx-auto" />
+            </span>
             <p>כל המוצרים הקבועים כבר ברשימה!</p>
           </div>
         )}
         {filter === 'cart' && sections.length === 0 && (
           <div className="bento-empty-state">
-            <span className="bento-empty-icon">🛒</span>
+            <span className="bento-empty-icon text-slate-400">
+              <IconCart className="w-8 h-8 mx-auto" />
+            </span>
             <p>הרשימה ריקה – הקש על מוצרים כדי להוסיף</p>
           </div>
         )}
         {filter === 'all' && nq && sections.length === 0 && (
           <div className="bento-empty-state">
-            <span className="bento-empty-icon">🔎</span>
+            <span className="bento-empty-icon text-slate-400">
+              <IconSearch className="w-8 h-8 mx-auto" />
+            </span>
             <p>לא נמצא "{query}" במאגר</p>
           </div>
         )}
@@ -189,7 +200,6 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
         {sections.map(({ cat, groups }) => (
           <section key={cat.id} id={`cat-${cat.id}`} className="bento-section">
             <header className="bento-section-header">
-              <span className="bento-section-icon" aria-hidden>{cat.icon}</span>
               <h2 className="bento-section-title">{cat.name}</h2>
             </header>
 

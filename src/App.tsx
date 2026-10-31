@@ -6,6 +6,7 @@ import { Toast, type ToastData } from './components/ui';
 import { buildShareText, haptic, resolveFamilyId } from './lib/util';
 import { useStore } from './lib/useStore';
 import type { CatalogItem, ListEntry } from './types';
+import { IconHome, IconCart, IconShare, IconSettings } from './components/Icons';
 
 type Mode = 'home' | 'super';
 type SheetState =
@@ -110,19 +111,21 @@ export default function App() {
         <div className="topbar-row">
           <div className="mode-toggle" role="tablist">
             <button role="tab" aria-selected={mode === 'home'} className={mode === 'home' ? 'on' : ''} onClick={() => setMode('home')}>
-              🏠 בבית
+              <IconHome className="mode-icon" />
+              <span>בבית</span>
               {inList > 0 && <span className="mode-count">{inList}</span>}
             </button>
             <button role="tab" aria-selected={mode === 'super'} className={mode === 'super' ? 'on' : ''} onClick={() => setMode('super')}>
-              🛒 בסופר
+              <IconCart className="mode-icon" />
+              <span>בסופר</span>
               {remaining > 0 && <span className="mode-count">{remaining}</span>}
             </button>
           </div>
           <button className="icon-btn top-icon" onClick={share} aria-label="שיתוף / העתקת רשימה">
-            📤
+            <IconShare className="w-5 h-5" />
           </button>
           <button className="icon-btn top-icon" onClick={() => setSheet({ kind: 'settings' })} aria-label="הגדרות">
-            ⚙️
+            <IconSettings className="w-5 h-5" />
             {kind && <span className={`sync-dot sync-${kind === 'local' ? 'local' : sync}`} />}
           </button>
         </div>
