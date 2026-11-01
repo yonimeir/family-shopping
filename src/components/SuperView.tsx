@@ -62,11 +62,11 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
           <div className="super-empty-icon text-slate-400" aria-hidden>
             <IconCart className="w-12 h-12 mx-auto" />
           </div>
-          <h2 className="super-empty-title font-frank">הרשימה ריקה לקנייה</h2>
-          <p className="super-empty-desc">סמן מוצרים במצב "בבית" כדי לבנות את מסלול הקנייה</p>
+          <h2 className="super-empty-title font-frank">הרשימה ריקה</h2>
+          <p className="super-empty-desc">עוברים ל"בבית" ובוחרים מה צריך לקנות</p>
           <button type="button" className="bento-btn-primary flex items-center justify-center gap-2 mx-auto" onClick={onGoHome}>
             <IconHome className="w-4 h-4" />
-            <span>לבניית הרשימה</span>
+            <span>לבחירת מוצרים</span>
           </button>
         </div>
       </main>
@@ -77,9 +77,9 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
     <main className="super-view">
       <div className="super-progress-card" aria-label={`נאספו ${done} מתוך ${total}`}>
         <div className="super-progress-info">
-          <span className="super-progress-label">התקדמות בסופר</span>
+          <span className="super-progress-label">בעגלה</span>
           <span className="super-progress-numbers tabular-nums">
-            <b>{done}</b> מתוך <b>{total}</b> מוצרים
+            <b>{done}</b> מתוך <b>{total}</b>
             {done === total && ' 🎉'}
           </span>
         </div>
@@ -122,7 +122,7 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
           >
             <span className="super-collected-title">
               <IconCheck className="inline-block w-4 h-4 text-emerald-500 me-1" />
-              נאספו לעגלה (<span className="tabular-nums">{collected.length}</span>)
+              כבר בעגלה (<span className="tabular-nums">{collected.length}</span>)
             </span>
             <span className="super-collected-chevron" aria-hidden>
               {showDone ? '▲' : '▼'}
@@ -140,8 +140,7 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
 
       <div className="super-floating-bar">
         <button type="button" className="bento-btn-primary super-btn-checkout flex items-center justify-center gap-2" onClick={onCheckout}>
-          <span>סיימתי קנייה בסופר</span>
-          <IconCheck className="w-5 h-5" />
+          <span>סיימנו קנייה 💳</span>
         </button>
       </div>
     </main>
@@ -194,7 +193,7 @@ function SuperRow({
       <div className="super-item-content">
         <div className="super-item-title-row">
           <span className="super-item-name font-frank">{it.name}</span>
-          {isNew && <span className="super-badge-new">חדש</span>}
+          {isNew && <span className="super-badge-new">נוסף מהבית 🔔</span>}
         </div>
         {e.notes && (
           <span className="super-item-note">

@@ -57,7 +57,7 @@ export default function App() {
   };
 
   const undoRemove = useCallback(
-    (removed: ListEntry, name: string) => showToast(`"${name}" הוסר מהרשימה`, () => actions.restoreEntry(removed)),
+    (removed: ListEntry, name: string) => showToast(`"${name}" ירד מהרשימה`, () => actions.restoreEntry(removed)),
     [actions, showToast]
   );
 
@@ -87,17 +87,17 @@ export default function App() {
 
   const share = async () => {
     const text = buildShareText(state);
-    if (!text) return showToast('אין מוצרים פתוחים לשיתוף');
+    if (!text) return showToast('אין כרגע מוצרים ברשימה');
     try {
       if (navigator.share) await navigator.share({ text });
       else {
         await navigator.clipboard.writeText(text);
-        showToast('📋 הרשימה הועתקה – אפשר להדביק בוואטסאפ');
+        showToast('הרשימה הועתקה, אפשר לשלוח בוואטסאפ 📋');
       }
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
         await navigator.clipboard?.writeText(text).catch(() => {});
-        showToast('📋 הרשימה הועתקה');
+        showToast('הרשימה הועתקה 📋');
       }
     }
   };
@@ -133,7 +133,7 @@ export default function App() {
       </header>
 
       {!state.ready ? (
-        <div className="loading">טוען רשימה…</div>
+        <div className="loading">רגע, בודקים מה חסר…</div>
       ) : mode === 'home' ? (
         <CatalogView
           state={state}
@@ -162,7 +162,7 @@ export default function App() {
           onSave={(name, cat, unit, qty) => {
             actions.addNewItem(name, cat, unit, qty);
             setSheet(null);
-            showToast(`"${name}" נוסף למאגר ולרשימה`);
+            showToast(`"${name}" נוסף לרשימה`);
           }}
         />
       )}
@@ -201,13 +201,13 @@ export default function App() {
           onKeep={() => {
             actions.checkout('keepRemaining');
             setSheet(null);
-            showToast(`נשארו ${remaining} מוצרים לקנייה הבאה`);
+            showToast(`נשארו ${remaining} מוצרים לפעם הבאה`);
           }}
           onResetAll={() => {
             actions.checkout('resetAll');
             setSheet(null);
             setMode('home');
-            showToast('🎉 הקנייה הושלמה, הרשימה אופסה');
+            showToast('הרשימה אופסה לקראת הפעם הבאה 👍');
           }}
         />
       )}

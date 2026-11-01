@@ -160,7 +160,7 @@ export function EditItemSheet({
           </button>
         ) : (
           <button className="btn-danger" onClick={() => onDelete(item.id)}>
-            בטוח? למחוק לצמיתות
+            בטוח שרוצים למחוק?
           </button>
         )}
       </div>
@@ -188,7 +188,7 @@ export function NoteSheet({
         autoFocus
         rows={3}
         value={text}
-        placeholder='למשל: "רק אם ירוק וקשה"'
+        placeholder="למשל: רק אם ירוק וקשה, או מותג מסוים..."
         onChange={(e) => setText(e.target.value)}
       />
       <div className="sheet-actions">
@@ -218,29 +218,29 @@ export function CheckoutSheet({
   onClose: () => void;
 }) {
   return (
-    <Sheet title="סיום קנייה" onClose={onClose}>
+    <Sheet title="סיימנו קנייה" onClose={onClose}>
       {remaining > 0 ? (
         <>
           <p className="dialog-text">
-            נותרו <b>{remaining}</b> מוצרים שלא נאספו.
+            נשארו <b>{remaining}</b> מוצרים שלא אספנו.
             <br />
-            להשאיר אותם ברשימה לקנייה הבאה או לאפס הכל?
+            להשאיר אותם לפעם הבאה?
           </p>
           <div className="sheet-actions">
             <button className="btn-primary" onClick={onKeep}>
-              השאר {remaining} לקנייה הבאה
+              להשאיר לפעם הבאה
             </button>
             <button className="btn-danger-ghost" onClick={onResetAll}>
-              אפס הכל
+              למחוק הכל מהרשימה
             </button>
           </div>
         </>
       ) : (
         <>
-          <p className="dialog-text">כל המוצרים נאספו 🎉 לאפס את הרשימה?</p>
+          <p className="dialog-text">אספנו הכל! 🎉 מאפסים את הרשימה לקראת הפעם הבאה?</p>
           <div className="sheet-actions">
             <button className="btn-primary" onClick={onResetAll}>
-              סיים ואפס רשימה
+              איפוס רשימה
             </button>
           </div>
         </>

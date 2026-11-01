@@ -100,7 +100,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="חיפוש או הוספת מוצר לקטלוג…"
+            placeholder="מה חסר בבית? חפשו או הוסיפו…"
             enterKeyHint="search"
             aria-label="חיפוש מוצר"
           />
@@ -118,7 +118,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
           onClick={() => setMode('core')}
         >
           <IconStar className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-          <span>בדוק מוצרים קבועים</span>
+          <span>הקבועים שלנו</span>
         </button>
         <button
           type="button"
@@ -167,7 +167,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
               <IconPlus className="w-4 h-4" />
             </span>
             <span className="bento-add-label">
-              הוסף את <b>"{query.trim()}"</b> למאגר ולקנייה
+              הוספת <b>"{query.trim()}"</b> לרשימה
             </span>
           </button>
         )}
@@ -177,7 +177,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
             <span className="bento-empty-icon text-emerald-500">
               <IconCheck className="w-8 h-8 mx-auto" />
             </span>
-            <p>כל המוצרים הקבועים כבר ברשימה!</p>
+            <p>כל המוצרים הקבועים כבר ברשימה 👍</p>
           </div>
         )}
         {filter === 'cart' && sections.length === 0 && (
@@ -185,7 +185,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
             <span className="bento-empty-icon text-slate-400">
               <IconCart className="w-8 h-8 mx-auto" />
             </span>
-            <p>הרשימה ריקה – הקש על מוצרים כדי להוסיף</p>
+            <p>המקרר ריק? סמנו מה צריך להביא</p>
           </div>
         )}
         {filter === 'all' && nq && sections.length === 0 && (
@@ -193,7 +193,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
             <span className="bento-empty-icon text-slate-400">
               <IconSearch className="w-8 h-8 mx-auto" />
             </span>
-            <p>לא נמצא "{query}" במאגר</p>
+            <p>לא מצאנו "{query}". רוצים להוסיף?</p>
           </div>
         )}
 
@@ -228,7 +228,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
             ))}
           </section>
         ))}
-        <p className="bento-footer-hint">טיפ: לחיצה ארוכה על כרטיס מאפשרת עריכה או מחיקה מהמאגר</p>
+        <p className="bento-footer-hint">טיפ: לחיצה ארוכה על מוצר תאפשר לערוך או למחוק אותו</p>
       </main>
     </>
   );
