@@ -26,6 +26,27 @@ export default function App() {
   const [toast, setToast] = useState<ToastData | null>(null);
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
   const headerRef = useRef<HTMLElement>(null);
+  const bgRef = useRef<HTMLDivElement>(null);
+
+  // Parallax background depth: grid drifts at 30% scroll speed
+  useEffect(() => {
+    const el = bgRef.current;
+    if (!el) return;
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          // Seamless loop across 384px (LCM of 24px grid and 128px paper grain tile)
+          const offset = (window.scrollY * -0.3) % 384;
+          el.style.transform = `translate3d(0, ${offset}px, 0)`;
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
 
   // Expose sticky header height to CSS / scroll math.
   useEffect(() => {
@@ -107,6 +128,7 @@ export default function App() {
 
   return (
     <div className={`app mode-${mode}`}>
+      <div className="app-bg-parallax" ref={bgRef} aria-hidden />
       <header className="topbar" ref={headerRef}>
         <div className="topbar-row">
           <div className="mode-toggle" role="tablist">
