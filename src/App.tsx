@@ -127,9 +127,10 @@ export default function App() {
   const inList = Object.values(state.list).filter((e) => state.catalog[e.itemId]).length;
 
   return (
-    <div className={`app mode-${mode}`}>
+    <>
       <div className="app-bg-parallax" ref={bgRef} aria-hidden />
-      <header className="topbar" ref={headerRef}>
+      <div className={`app mode-${mode}`}>
+        <header className="topbar" ref={headerRef}>
         <div className="topbar-row">
           <div className="mode-toggle" role="tablist">
             <button role="tab" aria-selected={mode === 'home'} className={mode === 'home' ? 'on' : ''} onClick={() => setMode('home')}>
@@ -246,5 +247,6 @@ export default function App() {
 
       <Toast toast={toast} onDone={clearToast} />
     </div>
+    </>
   );
 }
