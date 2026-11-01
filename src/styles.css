@@ -328,6 +328,8 @@ input, textarea { font: inherit; color: inherit; }
 .bento-section {
   scroll-margin-block-start: var(--top-header-height);
   margin-block-end: 24px;
+  content-visibility: auto;
+  contain-intrinsic-size: 1px 350px;
 }
 .bento-section-header {
   display: flex;

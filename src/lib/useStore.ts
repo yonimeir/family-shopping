@@ -1,17 +1,65 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createBackend } from '../backend';
+import { SEED_CATEGORIES, SEED_ITEMS } from '../data/seed';
 import type { AppState, Backend, CatalogItem, Category, CheckoutMode, ListEntry, SyncState } from '../types';
 import { getDeviceId, getMyName, stepDown, stepUp } from './util';
 
-const EMPTY: AppState = { ready: false, categories: [], catalog: {}, list: {} };
+function getInitialState(familyId: string): AppState {
+  const baseCatalog: Record<string, CatalogItem> = Object.fromEntries(
+    SEED_ITEMS.map((item) => [item.id, item])
+  );
+  try {
+    const raw = localStorage.getItem(`fs:cached_state_${familyId}`);
+    if (raw) {
+      const cached = JSON.parse(raw);
+      return {
+        ready: true,
+        categories: cached.categories?.length ? cached.categories : SEED_CATEGORIES,
+        catalog: { ...baseCatalog, ...(cached.customCatalog || {}) },
+        list: cached.list || {},
+      };
+    }
+  } catch (e) {
+    console.warn('Failed to parse cached state', e);
+  }
+  return {
+    ready: true,
+    categories: SEED_CATEGORIES,
+    catalog: baseCatalog,
+    list: {},
+  };
+}
 
 export function useStore(familyId: string) {
-  const [state, setState] = useState<AppState>(EMPTY);
+  const [state, setStateRaw] = useState<AppState>(() => getInitialState(familyId));
   const [sync, setSync] = useState<SyncState>('synced');
   const [kind, setKind] = useState<Backend['kind'] | null>(null);
   const backendRef = useRef<Backend | null>(null);
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  const setState = useCallback(
+    (next: AppState) => {
+      setStateRaw(next);
+      try {
+        const customCatalog: Record<string, CatalogItem> = {};
+        for (const [id, it] of Object.entries(next.catalog)) {
+          if (!id.startsWith('item_')) customCatalog[id] = it;
+        }
+        localStorage.setItem(
+          `fs:cached_state_${familyId}`,
+          JSON.stringify({
+            categories: next.categories,
+            customCatalog,
+            list: next.list,
+          })
+        );
+      } catch {
+        // ignore
+      }
+    },
+    [familyId]
+  );
 
   useEffect(() => {
     let unsub: (() => void) | undefined;

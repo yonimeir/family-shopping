@@ -32,13 +32,9 @@ export async function createFirebaseBackend(familyId: string): Promise<Backend> 
     db = getFirestore(app);
   }
 
-  // Ensure anonymous authentication
-  try {
-    if (!auth.currentUser) {
-      await signInAnonymously(auth);
-    }
-  } catch (err) {
-    console.warn('Anonymous auth note:', err);
+  // Ensure anonymous authentication asynchronously in the background so initial load is instant
+  if (!auth.currentUser) {
+    signInAnonymously(auth).catch((err) => console.warn('Anonymous auth note:', err));
   }
 
   const familyRef = doc(db, 'families', familyId);

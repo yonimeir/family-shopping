@@ -162,6 +162,7 @@ function SuperRow({
   const emoji = getItemEmoji(it.name, it.categoryId);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const showImg = Boolean(packshot) && !imgError;
 
   return (
     <button
@@ -173,14 +174,14 @@ function SuperRow({
         {e.isPurchased ? <IconCheck className="w-3.5 h-3.5 text-white" /> : null}
       </span>
       <div className="super-item-thumb">
-        {(!imgLoaded || imgError) && (
+        {(!showImg || !imgLoaded) && (
           <span className="super-item-placeholder" aria-hidden>
             {emoji}
           </span>
         )}
-        {!imgError && (
+        {showImg && (
           <img 
-            src={packshot} 
+            src={packshot!} 
             alt={it.name} 
             loading="lazy" 
             decoding="async"

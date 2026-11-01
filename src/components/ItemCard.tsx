@@ -21,6 +21,7 @@ export const ItemCard = memo(function ItemCard({ item, entry, onToggle, onQty, o
   const emoji = getItemEmoji(item.name, item.categoryId);
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
+  const showImg = Boolean(packshotUrl) && !imgError;
 
   return (
     <div className={`clean-card ${active ? 'clean-card-active' : ''}`}>
@@ -34,16 +35,16 @@ export const ItemCard = memo(function ItemCard({ item, entry, onToggle, onQty, o
         }}
         aria-pressed={active}
       >
-        {/* Studio Packshot on pure white background with instant emoji progressive loading */}
+        {/* Studio Packshot when available, otherwise clean native emoji */}
         <div className="packshot-media">
-          {(!imgLoaded || imgError) && (
+          {(!showImg || !imgLoaded) && (
             <span className="packshot-placeholder" aria-hidden>
               {emoji}
             </span>
           )}
-          {!imgError && (
+          {showImg && (
             <img
-              src={packshotUrl}
+              src={packshotUrl!}
               alt={item.name}
               loading="lazy"
               decoding="async"

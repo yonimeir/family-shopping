@@ -325,7 +325,7 @@ export function getItemEmoji(itemName: string, categoryId: string): string {
   return CATEGORY_EMOJIS[categoryId] || '🛒';
 }
 
-export function getProductPackshot(itemName: string, categoryId: string): string {
+export function getProductPackshot(itemName: string, _categoryId?: string): string | null {
   if (RAMI_LEVY_PACKSHOTS[itemName]) {
     return RAMI_LEVY_PACKSHOTS[itemName];
   }
@@ -333,5 +333,6 @@ export function getProductPackshot(itemName: string, categoryId: string): string
   if (RAMI_LEVY_PACKSHOTS[clean]) {
     return RAMI_LEVY_PACKSHOTS[clean];
   }
-  return CATEGORY_FALLBACKS[categoryId] || CATEGORY_FALLBACKS.veg_fruit;
+  // Return null so unmatched and newly added items show their clean emoji instead of an unrelated image!
+  return null;
 }
