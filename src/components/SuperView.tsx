@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppState, CatalogItem, ListEntry } from '../types';
 import { formatQty, getDeviceId, sortedCategories } from '../lib/util';
-import { getProductPackshot } from '../lib/productImages';
+import { getProductPackshot, getItemEmoji } from '../lib/productImages';
 import { IconCart, IconHome, IconNote, IconCheck } from './Icons';
 
 interface Props {
@@ -160,6 +160,9 @@ function SuperRow({
   onTap: (id: string) => void;
 }) {
   const packshot = getProductPackshot(it.name, it.categoryId);
+  const emoji = getItemEmoji(it.name, it.categoryId);
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   return (
     <button
@@ -171,15 +174,22 @@ function SuperRow({
         {e.isPurchased ? <IconCheck className="w-3.5 h-3.5 text-white" /> : null}
       </span>
       <div className="super-item-thumb">
-        <img 
-          src={packshot} 
-          alt={it.name} 
-          loading="lazy" 
-          className="super-item-img" 
-          onError={(e) => {
-            (e.currentTarget as HTMLElement).style.opacity = '0';
-          }}
-        />
+        {(!imgLoaded || imgError) && (
+          <span className="super-item-placeholder" aria-hidden>
+            {emoji}
+          </span>
+        )}
+        {!imgError && (
+          <img 
+            src={packshot} 
+            alt={it.name} 
+            loading="lazy" 
+            decoding="async"
+            className={`super-item-img ${imgLoaded ? 'super-item-img-loaded' : 'super-item-img-loading'}`} 
+            onLoad={() => setImgLoaded(true)}
+            onError={() => setImgError(true)}
+          />
+        )}
       </div>
       <div className="super-item-content">
         <div className="super-item-title-row">

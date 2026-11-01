@@ -1,8 +1,8 @@
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import type { CatalogItem, ListEntry } from '../types';
 import { formatQty } from '../lib/util';
 import { useLongPress } from './ui';
-import { getProductPackshot } from '../lib/productImages';
+import { getProductPackshot, getItemEmoji } from '../lib/productImages';
 import { IconCheck, IconStar, IconNote, IconPlus, IconMinus } from './Icons';
 
 interface Props {
@@ -18,6 +18,9 @@ export const ItemCard = memo(function ItemCard({ item, entry, onToggle, onQty, o
   const lp = useLongPress(() => onEdit(item));
   const active = Boolean(entry);
   const packshotUrl = getProductPackshot(item.name, item.categoryId);
+  const emoji = getItemEmoji(item.name, item.categoryId);
+  const [imgLoaded, setImgLoaded] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   return (
     <div className={`clean-card ${active ? 'clean-card-active' : ''}`}>
@@ -31,17 +34,24 @@ export const ItemCard = memo(function ItemCard({ item, entry, onToggle, onQty, o
         }}
         aria-pressed={active}
       >
-        {/* Studio Packshot on clean white background */}
+        {/* Studio Packshot on pure white background with instant emoji progressive loading */}
         <div className="packshot-media">
-          <img
-            src={packshotUrl}
-            alt={item.name}
-            loading="lazy"
-            className="packshot-img"
-            onError={(e) => {
-              (e.currentTarget as HTMLElement).style.opacity = '0';
-            }}
-          />
+          {(!imgLoaded || imgError) && (
+            <span className="packshot-placeholder" aria-hidden>
+              {emoji}
+            </span>
+          )}
+          {!imgError && (
+            <img
+              src={packshotUrl}
+              alt={item.name}
+              loading="lazy"
+              decoding="async"
+              className={`packshot-img ${imgLoaded ? 'packshot-img-loaded' : 'packshot-img-loading'}`}
+              onLoad={() => setImgLoaded(true)}
+              onError={() => setImgError(true)}
+            />
+          )}
           <span className={`clean-card-check ${active ? 'clean-card-check-on' : ''}`} aria-hidden>
             {active ? <IconCheck className="check-svg" /> : null}
           </span>
