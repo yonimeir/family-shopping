@@ -38,6 +38,9 @@ export const ItemCard = memo(function ItemCard({ item, entry, onToggle, onQty, o
             alt={item.name}
             loading="lazy"
             className="packshot-img"
+            onError={(e) => {
+              (e.currentTarget as HTMLElement).style.opacity = '0';
+            }}
           />
           <span className={`clean-card-check ${active ? 'clean-card-check-on' : ''}`} aria-hidden>
             {active ? <IconCheck className="check-svg" /> : null}

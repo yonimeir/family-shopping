@@ -171,7 +171,15 @@ function SuperRow({
         {e.isPurchased ? <IconCheck className="w-3.5 h-3.5 text-white" /> : null}
       </span>
       <div className="super-item-thumb">
-        <img src={packshot} alt={it.name} loading="lazy" className="super-item-img" />
+        <img 
+          src={packshot} 
+          alt={it.name} 
+          loading="lazy" 
+          className="super-item-img" 
+          onError={(e) => {
+            (e.currentTarget as HTMLElement).style.opacity = '0';
+          }}
+        />
       </div>
       <div className="super-item-content">
         <div className="super-item-title-row">
