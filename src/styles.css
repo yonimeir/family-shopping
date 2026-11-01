@@ -367,12 +367,14 @@ input, textarea { font: inherit; color: inherit; }
   }
 }
 
-/* ---------- Clean Packshot Cards (Studio White Background) ---------- */
+/* ---------- Clean Packshot Cards (Option 2: Direct on Paper Blend) ---------- */
 .clean-card {
-  background: #ffffff;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: var(--radius-app-card);
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
+  box-shadow: 0 1px 4px 0 rgba(15, 23, 42, 0.04);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -392,12 +394,12 @@ input, textarea { font: inherit; color: inherit; }
   background: transparent;
 }
 
-/* Studio Packshot media container on pure white */
+/* Studio Packshot media container with multiply blend */
 .packshot-media {
   position: relative;
   width: 100%;
   height: 110px;
-  background: #ffffff;
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -423,6 +425,7 @@ input, textarea { font: inherit; color: inherit; }
   object-fit: contain;
   position: relative;
   z-index: 1;
+  mix-blend-mode: multiply;
 }
 .packshot-img-loading {
   opacity: 0;
@@ -524,9 +527,11 @@ input, textarea { font: inherit; color: inherit; }
 
 /* Selected in cart */
 .clean-card-active {
-  background: var(--cart-active-bg);
-  border-color: var(--cart-active-border);
-  box-shadow: var(--card-active-shadow);
+  background: rgba(240, 253, 244, 0.82);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border-color: #86efac;
+  box-shadow: 0 0 0 1px #86efac, 0 3px 10px -2px rgba(16, 185, 129, 0.16);
 }
 .clean-card-active .packshot-media {
   background: transparent;
@@ -731,7 +736,9 @@ input, textarea { font: inherit; color: inherit; }
   width: 44px;
   height: 44px;
   border-radius: 10px;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
   border: 1px solid var(--border-hairline);
   display: flex;
   align-items: center;
@@ -757,6 +764,7 @@ input, textarea { font: inherit; color: inherit; }
   object-fit: contain;
   position: relative;
   z-index: 1;
+  mix-blend-mode: multiply;
 }
 .super-item-img-loading {
   opacity: 0;
