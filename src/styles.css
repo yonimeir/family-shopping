@@ -46,13 +46,18 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: transparent;
+  background-color: var(--bg-app);
+  background-image:
+    linear-gradient(to right, rgba(15, 23, 42, 0.055) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.055) 1px, transparent 1px),
+    url('./assets/paper-grain.png');
+  background-size: 24px 24px, 24px 24px, auto;
+  background-repeat: repeat, repeat, repeat;
 }
 body {
   min-height: 100dvh;
   overscroll-behavior-y: contain;
   color: var(--text-main);
-  background: transparent;
 }
 body.no-scroll { overflow: hidden; }
 button { font: inherit; color: inherit; cursor: pointer; border: none; background: none; touch-action: manipulation; }
@@ -61,23 +66,7 @@ input, textarea { font: inherit; color: inherit; }
 
 .tabular-nums { font-variant-numeric: tabular-nums; }
 
-/* Parallax Paper & Grid Layer (Moves at 30% scroll speed) */
-.app-bg-parallax {
-  position: fixed;
-  inset: -384px -20px;
-  z-index: -1;
-  pointer-events: none;
-  background-color: var(--bg-app);
-  background-image:
-    linear-gradient(to right, rgba(15, 23, 42, 0.055) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(15, 23, 42, 0.055) 1px, transparent 1px),
-    url('./assets/paper-grain.png');
-  background-size: 24px 24px, 24px 24px, auto;
-  background-repeat: repeat, repeat, repeat;
-  will-change: transform;
-}
-
-/* Responsive Shell (No z-index to allow mix-blend-mode to multiply through to parallax canvas) */
+/* Responsive Shell */
 .app {
   max-width: 600px;
   margin-inline: auto;
