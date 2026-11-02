@@ -9,7 +9,8 @@
   "background_color": "#faf9f6",
   "theme_color": "#3B5339",
   "icons": [
-    { "src": "logo.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" },
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }
+    { "src": "logo.png?v=2", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "logo.png?v=2", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.svg?v=2", "sizes": "any", "type": "image/svg+xml" }
   ]
 }

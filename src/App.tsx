@@ -162,7 +162,11 @@ export default function App() {
       </header>
 
       {!state.ready ? (
-        <div className="loading">רגע, בודקים מה חסר…</div>
+        <div className="app-splash-loading">
+          <img src="./logo.png?v=2" alt="אין כלום בבית" className="splash-logo" />
+          <div className="splash-title">אין כלום בבית</div>
+          <div className="splash-sub">רגע, בודקים מה חסר…</div>
+        </div>
       ) : mode === 'home' ? (
         <CatalogView
           state={state}

@@ -1135,3 +1135,44 @@ input, textarea { font: inherit; color: inherit; }
   padding-inline: 10px;
   border-radius: 8px;
 }
+
+/* ---------- App Splash / Pre-ready State ---------- */
+.app-splash-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+.splash-logo {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  object-fit: cover;
+  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  border: 1.5px solid var(--border-hairline);
+  animation: pulse-gentle 2s ease-in-out infinite;
+}
+.splash-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+.splash-sub {
+  font-size: 14px;
+  color: var(--text-muted);
+}
+
+@keyframes pulse-gentle {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.03); opacity: 0.92; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .splash-logo { animation: none; }
+}
