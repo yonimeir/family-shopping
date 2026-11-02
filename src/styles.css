@@ -367,11 +367,10 @@ input, textarea { font: inherit; color: inherit; }
 
 /* ---------- Clean Packshot Cards (Option 2: Direct on Paper Blend) ---------- */
 .clean-card {
-  background: #ffffff;
-  mix-blend-mode: multiply;
+  background: rgba(255, 255, 255, 0.40);
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: var(--radius-app-card);
-  box-shadow: 0 1px 4px 0 rgba(15, 23, 42, 0.04);
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -524,9 +523,9 @@ input, textarea { font: inherit; color: inherit; }
 
 /* Selected in cart */
 .clean-card-active {
-  background: #dcfce7;
+  background: rgba(220, 252, 231, 0.75);
   border-color: #86efac;
-  box-shadow: 0 0 0 1px #86efac, 0 3px 10px -2px rgba(16, 185, 129, 0.16);
+  box-shadow: 0 0 0 1px #86efac, 0 3px 10px -2px rgba(16, 185, 129, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 .clean-card-active .packshot-media {
   background: transparent;
@@ -703,9 +702,9 @@ input, textarea { font: inherit; color: inherit; }
   align-items: center;
   gap: 12px;
   text-align: start;
-  background: #ffffff;
-  mix-blend-mode: multiply;
+  background: rgba(255, 255, 255, 0.45);
   border: 1px solid var(--border-hairline);
+  box-shadow: 0 1px 3px 0 rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9);
   border-radius: 14px;
   padding: 12px 14px;
   min-height: 56px;
