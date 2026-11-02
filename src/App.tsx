@@ -38,6 +38,26 @@ export default function App() {
     return () => ro.disconnect();
   }, []);
 
+  // Parallax: grid and paper drift at 35% scroll speed directly on body (preserving blend modes)
+  useEffect(() => {
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const offset = (window.scrollY * 0.35) % 384;
+          document.body.style.backgroundPositionY = `${offset}px`;
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      document.body.style.backgroundPositionY = '';
+    };
+  }, []);
+
   const showToast = useCallback((text: string, undo?: () => void) => {
     setToast({ id: Date.now(), text, onAction: undo, actionLabel: undo ? 'בטל ↩' : undefined });
   }, []);
