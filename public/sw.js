@@ -1,6 +1,6 @@
 // Service worker: makes the app shell open without network (supermarket basements!).
 // Data sync itself is handled offline by Firestore's IndexedDB cache.
-const CACHE = 'shopping-shell-v1';
+const CACHE = 'shopping-shell-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(['/', '/index.html', '/manifest.webmanifest', '/icon.svg'])));
