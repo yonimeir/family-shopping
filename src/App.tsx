@@ -129,6 +129,15 @@ export default function App() {
     <div className={`app mode-${mode}`}>
         <header className="topbar" ref={headerRef}>
         <div className="topbar-row">
+          <button
+            type="button"
+            className="topbar-brand"
+            onClick={() => setSheet({ kind: 'settings' })}
+            aria-label="אודות והגדרות"
+            title="אין כלום בבית"
+          >
+            <img src="./logo.png" alt="לוגו אין כלום בבית" className="topbar-logo" />
+          </button>
           <div className="mode-toggle" role="tablist">
             <button role="tab" aria-selected={mode === 'home'} className={mode === 'home' ? 'on' : ''} onClick={() => setMode('home')}>
               <IconHome className="mode-icon" />

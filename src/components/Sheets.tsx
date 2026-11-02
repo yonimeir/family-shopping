@@ -293,6 +293,14 @@ export function SettingsSheet({
 
   return (
     <Sheet title="הגדרות" onClose={onClose}>
+      <div className="settings-brand-banner">
+        <img src="./logo.png" alt="לוגו אין כלום בבית" className="settings-brand-img" />
+        <div className="settings-brand-info">
+          <div className="settings-brand-title">אין כלום בבית</div>
+          <div className="settings-brand-sub">רשימת קניות משפחתית חכמה</div>
+        </div>
+      </div>
+
       <section className="settings-block">
         <h3>👤 השם שלי</h3>
         <p className="muted">מופיע כאות קטנה ליד מוצרים שהוספת</p>
