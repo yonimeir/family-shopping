@@ -136,7 +136,7 @@ export default function App() {
             aria-label="אודות והגדרות"
             title="אין כלום בבית"
           >
-            <img src="./fridge-icon.png?v=4" alt="אין כלום בבית" className="topbar-fridge-icon" />
+            <img src="./fridge-icon.png?v=5" alt="אין כלום בבית" className="topbar-fridge-icon" />
           </button>
           <div className="mode-toggle" role="tablist">
             <button role="tab" aria-selected={mode === 'home'} className={mode === 'home' ? 'on' : ''} onClick={() => setMode('home')}>
@@ -163,7 +163,7 @@ export default function App() {
 
       {!state.ready ? (
         <div className="app-splash-loading">
-          <img src="./fridge-icon.png?v=4" alt="אין כלום בבית" className="splash-fridge-icon" />
+          <img src="./fridge-icon.png?v=5" alt="אין כלום בבית" className="splash-fridge-icon" />
           <div className="splash-title">אין כלום בבית</div>
           <div className="splash-sub">רגע, בודקים מה חסר…</div>
         </div>

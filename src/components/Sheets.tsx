@@ -294,7 +294,7 @@ export function SettingsSheet({
   return (
     <Sheet title="הגדרות" onClose={onClose}>
       <div className="settings-brand-banner">
-        <img src="./fridge-icon.png?v=4" alt="אין כלום בבית" className="settings-brand-fridge" />
+        <img src="./fridge-icon.png?v=5" alt="אין כלום בבית" className="settings-brand-fridge" />
         <div className="settings-brand-info">
           <div className="settings-brand-title">אין כלום בבית</div>
           <div className="settings-brand-sub">רשימת קניות משפחתית חכמה</div>
