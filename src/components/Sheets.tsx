@@ -3,7 +3,7 @@ import { UNITS } from '../data/seed';
 import type { AppState, CatalogItem, Category } from '../types';
 import { familyLink, getMyName, setMyName, sortedCategories, switchFamily } from '../lib/util';
 import { Sheet } from './ui';
-import fridgeIcon from '../assets/fridge-standalone.png';
+import fridgeBadge from '../assets/fridge-retro-badge.png';
 
 // ---------------- Add new item ----------------
 export function AddItemSheet({
@@ -295,7 +295,7 @@ export function SettingsSheet({
   return (
     <Sheet title="הגדרות" onClose={onClose}>
       <div className="settings-brand-banner">
-        <img src={fridgeIcon} alt="אין כלום בבית" className="settings-brand-fridge" />
+        <img src={fridgeBadge} alt="אין כלום בבית" className="settings-brand-fridge" />
         <div className="settings-brand-info">
           <div className="settings-brand-title">אין כלום בבית</div>
           <div className="settings-brand-sub">רשימת קניות משפחתית חכמה</div>
