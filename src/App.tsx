@@ -1,14 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { CatalogView } from './components/CatalogView';
 import { AddItemSheet, CheckoutSheet, EditItemSheet, NoteSheet, SettingsSheet } from './components/Sheets';
 import { SuperView } from './components/SuperView';
 import { Toast, type ToastData } from './components/ui';
-import { buildShareText, haptic, resolveFamilyId } from './lib/util';
+import { buildShareText, getPendingInviteFromUrl, haptic, resolveFamilyId } from './lib/util';
 import { useStore } from './lib/useStore';
 import type { CatalogItem, ListEntry } from './types';
 import { IconHome, IconCart, IconShare, IconSettings } from './components/Icons';
 import fridgeSolo from './assets/fridge-retro-solo.png';
 import fridgeBadge from './assets/fridge-retro-badge.png';
+import { OnboardingModal } from './components/OnboardingModal';
 
 type Mode = 'home' | 'super';
 type SheetState =
@@ -20,7 +21,8 @@ type SheetState =
   | null;
 
 export default function App() {
-  const familyId = useMemo(resolveFamilyId, []);
+  const [familyId, setFamilyId] = useState<string | null>(resolveFamilyId);
+  const [pendingInvite, setPendingInvite] = useState<string | null>(getPendingInviteFromUrl);
   const { state, sync, kind, actions } = useStore(familyId);
   const [mode, setModeRaw] = useState<Mode>(() => (localStorage.getItem('fs:mode') as Mode) || 'home');
   const [enteredAt, setEnteredAt] = useState(() => Number(localStorage.getItem('fs:superEnteredAt')) || Date.now());
@@ -123,6 +125,20 @@ export default function App() {
       }
     }
   };
+
+  if (!familyId) {
+    return (
+      <div className="app">
+        <OnboardingModal
+          pendingInviteId={pendingInvite}
+          onComplete={(newId) => {
+            setFamilyId(newId);
+            setPendingInvite(null);
+          }}
+        />
+      </div>
+    );
+  }
 
   const remaining = Object.values(state.list).filter((e) => !e.isPurchased && state.catalog[e.itemId]).length;
   const inList = Object.values(state.list).filter((e) => state.catalog[e.itemId]).length;
@@ -254,6 +270,17 @@ export default function App() {
           onSaveCategories={actions.saveCategories}
           onToast={showToast}
           onClose={() => setSheet(null)}
+        />
+      )}
+
+      {pendingInvite && pendingInvite !== familyId && (
+        <OnboardingModal
+          pendingInviteId={pendingInvite}
+          onComplete={(newId) => {
+            setFamilyId(newId);
+            setPendingInvite(null);
+          }}
+          onDismissPendingInvite={() => setPendingInvite(null)}
         />
       )}
 

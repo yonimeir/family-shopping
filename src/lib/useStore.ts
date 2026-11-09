@@ -4,10 +4,18 @@ import { SEED_CATEGORIES, SEED_ITEMS } from '../data/seed';
 import type { AppState, Backend, CatalogItem, Category, CheckoutMode, ListEntry, SyncState } from '../types';
 import { getDeviceId, getMyName, stepDown, stepUp } from './util';
 
-function getInitialState(familyId: string): AppState {
+function getInitialState(familyId: string | null): AppState {
   const baseCatalog: Record<string, CatalogItem> = Object.fromEntries(
     SEED_ITEMS.map((item) => [item.id, item])
   );
+  if (!familyId) {
+    return {
+      ready: false,
+      categories: SEED_CATEGORIES,
+      catalog: baseCatalog,
+      list: {},
+    };
+  }
   try {
     const raw = localStorage.getItem(`fs:cached_state_${familyId}`);
     if (raw) {
@@ -30,7 +38,7 @@ function getInitialState(familyId: string): AppState {
   };
 }
 
-export function useStore(familyId: string) {
+export function useStore(familyId: string | null) {
   const [state, setStateRaw] = useState<AppState>(() => getInitialState(familyId));
   const [sync, setSync] = useState<SyncState>('synced');
   const [kind, setKind] = useState<Backend['kind'] | null>(null);
@@ -41,6 +49,7 @@ export function useStore(familyId: string) {
   const setState = useCallback(
     (next: AppState) => {
       setStateRaw(next);
+      if (!familyId) return;
       try {
         const customCatalog: Record<string, CatalogItem> = {};
         for (const [id, it] of Object.entries(next.catalog)) {
@@ -62,6 +71,7 @@ export function useStore(familyId: string) {
   );
 
   useEffect(() => {
+    if (!familyId) return;
     let unsub: (() => void) | undefined;
     let cancelled = false;
     createBackend(familyId).then((b) => {

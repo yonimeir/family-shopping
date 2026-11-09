@@ -46,47 +46,101 @@ export function formatQty(qty: number, unit: string): string {
 
 // ---------- Family identity ----------
 const FAMILY_KEY = 'fs:familyId';
+const HOME_NAME_KEY = 'fs:homeName';
 const NAME_KEY = 'fs:myName';
 export const DEFAULT_FAMILY_ID = 'meir-family';
 
-function randomId(len = 20) {
-  const abc = 'abcdefghijkmnpqrstuvwxyz23456789';
+export function randomId(len = 6) {
+  const abc = 'abcdefghjkmnpqrstuvwxyz23456789';
   const bytes = crypto.getRandomValues(new Uint8Array(len));
   return Array.from(bytes, (b) => abc[b % abc.length]).join('');
+}
+
+export function getHomeName(): string {
+  return localStorage.getItem(HOME_NAME_KEY) || '';
+}
+
+export function setHomeName(name: string) {
+  const trimmed = name.trim();
+  if (trimmed) localStorage.setItem(HOME_NAME_KEY, trimmed);
+  else localStorage.removeItem(HOME_NAME_KEY);
+}
+
+export function generateFamilyId(): string {
+  return `home-${randomId(6)}`;
 }
 
 /**
  * Resolves the family ID.
  * Priority:
- * 1. URL parameter (?f=<id>)
- * 2. Stored ID in localStorage
- * 3. DEFAULT_FAMILY_ID ('meir-family') so all devices of the family connect to the SAME list immediately!
+ * 1. Stored ID in localStorage
+ * 2. URL parameter (?f=<id>)
+ * 3. null (requires Onboarding for new visitors)
  */
-export function resolveFamilyId(): string {
+export function resolveFamilyId(): string | null {
+  const url = new URL(location.href);
+  const fromUrl = url.searchParams.get('f');
+  const stored = localStorage.getItem(FAMILY_KEY);
+
+  // If user opens an invite URL
+  if (fromUrl && /^[a-z0-9_-]{3,40}$/i.test(fromUrl)) {
+    // If not yet joined any home, or already at this home
+    if (!stored || stored === fromUrl) {
+      localStorage.setItem(FAMILY_KEY, fromUrl);
+      url.searchParams.delete('f');
+      history.replaceState(null, '', url.toString());
+      return fromUrl;
+    }
+    // If they already have a different home, let App.tsx prompt them
+    return stored;
+  }
+
+  return stored;
+}
+
+export function getPendingInviteFromUrl(): string | null {
   const url = new URL(location.href);
   const fromUrl = url.searchParams.get('f');
   if (fromUrl && /^[a-z0-9_-]{3,40}$/i.test(fromUrl)) {
-    localStorage.setItem(FAMILY_KEY, fromUrl);
-    url.searchParams.delete('f');
-    history.replaceState(null, '', url.toString());
     return fromUrl;
   }
-  let id = localStorage.getItem(FAMILY_KEY);
-  if (!id) {
-    id = DEFAULT_FAMILY_ID;
-    localStorage.setItem(FAMILY_KEY, id);
+  return null;
+}
+
+export function createNewHome(homeName: string, myName: string): string {
+  const newId = generateFamilyId();
+  localStorage.setItem(FAMILY_KEY, newId);
+  setHomeName(homeName || 'הבית שלנו');
+  if (myName.trim()) setMyName(myName);
+  return newId;
+}
+
+export function joinHome(familyId: string, myName?: string, homeName?: string): void {
+  const cleanId = familyId.trim().toLowerCase();
+  localStorage.setItem(FAMILY_KEY, cleanId);
+  if (myName && myName.trim()) setMyName(myName);
+  if (homeName && homeName.trim()) setHomeName(homeName);
+  const url = new URL(location.href);
+  if (url.searchParams.has('f')) {
+    url.searchParams.delete('f');
+    history.replaceState(null, '', url.toString());
   }
-  return id;
 }
 
 export function familyLink(familyId: string) {
   return `${location.origin}${location.pathname}?f=${familyId}`;
 }
 
+export function familyInviteWhatsAppText(familyId: string, homeName?: string) {
+  const name = homeName || getHomeName() || 'הבית';
+  const link = familyLink(familyId);
+  return `היי! בוא/י ננהל יחד את רשימת הקניות של ${name} באפליקציית "אין כלום בבית" 🛒\nלהצטרפות מיידית לרשימה:\n${link}`;
+}
+
 export function switchFamily(idOrLink: string): boolean {
   const m = idOrLink.trim().match(/(?:[?&]f=)?([a-z0-9_-]{3,40})\s*$/i);
   if (!m) return false;
-  localStorage.setItem(FAMILY_KEY, m[1]);
+  localStorage.setItem(FAMILY_KEY, m[1].toLowerCase());
   location.reload();
   return true;
 }

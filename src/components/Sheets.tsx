@@ -1,7 +1,16 @@
 import { useState } from 'react';
 import { UNITS } from '../data/seed';
 import type { AppState, CatalogItem, Category } from '../types';
-import { familyLink, getMyName, setMyName, sortedCategories, switchFamily } from '../lib/util';
+import {
+  familyInviteWhatsAppText,
+  familyLink,
+  getHomeName,
+  getMyName,
+  setHomeName,
+  setMyName,
+  sortedCategories,
+  switchFamily,
+} from '../lib/util';
 import { Sheet } from './ui';
 import fridgeBadge from '../assets/fridge-retro-badge.png';
 
@@ -267,6 +276,7 @@ export function SettingsSheet({
   onClose: () => void;
 }) {
   const [name, setName] = useState(getMyName());
+  const [homeName, setHomeNameState] = useState(getHomeName() || (familyId === 'meir-family' ? 'משפחת מאיר' : 'הבית שלנו'));
   const [joinCode, setJoinCode] = useState('');
   const cats = sortedCategories(state.categories);
   const link = familyLink(familyId);
@@ -279,16 +289,18 @@ export function SettingsSheet({
     onSaveCategories(next.map((c, i) => ({ ...c, order: i + 1 })));
   };
 
-  const shareLink = async () => {
-    const text = 'הצטרפות לרשימת הקניות המשפחתית שלנו 🛒';
+  const shareWhatsApp = () => {
+    const text = familyInviteWhatsAppText(familyId, homeName);
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const copyLink = async () => {
     try {
-      if (navigator.share) await navigator.share({ title: 'קניות משפחתיות', text, url: link });
-      else {
-        await navigator.clipboard.writeText(link);
-        onToast('הקישור הועתק');
-      }
+      await navigator.clipboard.writeText(link);
+      onToast('קישור ההזמנה הועתק ללוח!');
     } catch {
-      /* user cancelled */
+      onToast('לא ניתן להעתיק אוטומטית');
     }
   };
 
@@ -313,25 +325,51 @@ export function SettingsSheet({
         />
       </section>
 
-      <section className="settings-block">
-        <h3>👫 שיתוף עם בן/בת הזוג</h3>
-        {backendKind === 'local' ? (
-          <p className="warn">
-            ⚠️ מצב מקומי: הנתונים נשמרים רק במכשיר הזה (מסונכרנים בין לשוניות). לסנכרון בין טלפונים צריך לחבר Firebase – ראו
-            README.
-          </p>
-        ) : (
-          <p className="muted">שלחו את הקישור. מי שפותח אותו מצטרף לרשימה המשותפת.</p>
-        )}
-        <button className="btn-primary" onClick={shareLink}>
-          📤 שלח קישור הצטרפות
-        </button>
-        <details className="join">
-          <summary>הצטרפות לרשימה קיימת</summary>
-          <input value={joinCode} placeholder="הדבק קישור או קוד" onChange={(e) => setJoinCode(e.target.value)} />
-          <button className="btn-ghost" onClick={() => !switchFamily(joinCode) && onToast('קוד לא תקין')}>
-            הצטרף
+      <section className="settings-block home-card-block">
+        <div className="home-card-header">
+          <div className="home-card-title-wrap">
+            <span className="home-card-badge">בית פעיל</span>
+            <input
+              className="home-card-name-input"
+              value={homeName}
+              placeholder="שם הבית (למשל: משפחת כהן)"
+              onChange={(e) => setHomeNameState(e.target.value)}
+              onBlur={() => setHomeName(homeName)}
+              title="לחצו לעריכת שם הבית"
+            />
+          </div>
+          <div className="home-card-id" title="קוד הבית לשיתוף">{familyId}</div>
+        </div>
+
+        <p className="muted">הזמינו את בני הבית כדי לעדכן יחד את רשימת הקניות בזמן אמת.</p>
+
+        <div className="home-share-actions">
+          <button type="button" className="btn-whatsapp" onClick={shareWhatsApp}>
+            💬 הזמנה בוואטסאפ
           </button>
+          <button type="button" className="btn-secondary" onClick={copyLink}>
+            📋 העתקת קישור
+          </button>
+        </div>
+
+        <details className="join">
+          <summary>מעבר לבית אחר / הקמת בית חדש</summary>
+          <div className="join-form">
+            <input
+              value={joinCode}
+              placeholder="הדבק קוד בית או קישור הזמנה"
+              onChange={(e) => setJoinCode(e.target.value)}
+            />
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => {
+                if (!switchFamily(joinCode)) onToast('קוד בית לא תקין');
+              }}
+            >
+              מעבר בית
+            </button>
+          </div>
         </details>
       </section>
 
