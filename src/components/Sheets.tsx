@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { UNITS } from '../data/seed';
 import type { AppState, CatalogItem, Category } from '../types';
 import {
+  appShareWhatsAppText,
+  cleanAppUrl,
   familyInviteWhatsAppText,
   familyLink,
   getHomeName,
@@ -304,6 +306,21 @@ export function SettingsSheet({
     }
   };
 
+  const shareAppWhatsApp = () => {
+    const text = appShareWhatsAppText();
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const copyAppLink = async () => {
+    try {
+      await navigator.clipboard.writeText(cleanAppUrl());
+      onToast('הקישור הנקי לאפליקציה הועתק! 🔗');
+    } catch {
+      onToast('לא ניתן להעתיק אוטומטית');
+    }
+  };
+
   return (
     <Sheet title="הגדרות" onClose={onClose}>
       <div className="settings-brand-banner">
@@ -371,6 +388,25 @@ export function SettingsSheet({
             </button>
           </div>
         </details>
+      </section>
+
+      <section className="settings-block app-share-block">
+        <div className="app-share-header">
+          <span className="app-share-icon">🌟</span>
+          <div className="app-share-info">
+            <h3>שיתוף האפליקציה עם חברים</h3>
+            <p className="muted">קישור נקי להקמת בית חדש משלהם (ללא גישה לרשימה שלכם)</p>
+          </div>
+        </div>
+
+        <div className="home-share-actions">
+          <button type="button" className="btn-share-app-wa" onClick={shareAppWhatsApp}>
+            💬 שיתוף בוואטסאפ
+          </button>
+          <button type="button" className="btn-secondary" onClick={copyAppLink}>
+            🔗 העתקת קישור
+          </button>
+        </div>
       </section>
 
       <section className="settings-block">

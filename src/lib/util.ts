@@ -131,6 +131,15 @@ export function familyLink(familyId: string) {
   return `${location.origin}${location.pathname}?f=${familyId}`;
 }
 
+export function cleanAppUrl(): string {
+  return `${location.origin}${location.pathname}?ref=share`;
+}
+
+export function appShareWhatsAppText(): string {
+  const url = cleanAppUrl();
+  return `היי! מצאתי אפליקציה מעולה וחינמית לרשימת קניות משפחתית מסונכרנת בזמן אמת – "אין כלום בבית" 🛒🥑\nמוזמנים להקים בית ורשימה משלכם בשניות:\n${url}`;
+}
+
 export function familyInviteWhatsAppText(familyId: string, homeName?: string) {
   const name = homeName || getHomeName() || 'הבית';
   const link = familyLink(familyId);
