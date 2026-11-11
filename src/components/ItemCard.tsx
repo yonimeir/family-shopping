@@ -72,12 +72,19 @@ export const ItemCard = memo(function ItemCard({ item, entry, onToggle, onQty, o
                 {formatQty(item.defaultQty, item.defaultUnit)}
               </span>
             ) : (
-              entry!.notes && (
-                <span className="clean-card-note" title={entry!.notes}>
-                  <IconNote className="inline-block w-3 h-3 me-1 opacity-70" />
-                  {entry!.notes}
-                </span>
-              )
+              <div className="clean-card-active-meta">
+                {entry!.addedBy && (
+                  <span className="clean-card-author" title={`נוסף ע"י ${entry!.addedBy}`}>
+                    👤 {entry!.addedBy}
+                  </span>
+                )}
+                {entry!.notes && (
+                  <span className="clean-card-note" title={entry!.notes}>
+                    <IconNote className="inline-block w-3 h-3 me-1 opacity-70" />
+                    {entry!.notes}
+                  </span>
+                )}
+              </div>
             )}
           </div>
         </div>

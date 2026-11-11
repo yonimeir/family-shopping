@@ -315,11 +315,11 @@ export function SettingsSheet({
       </div>
 
       <section className="settings-block">
-        <h3>👤 השם שלי</h3>
-        <p className="muted">מופיע כאות קטנה ליד מוצרים שהוספת</p>
+        <h3>👤 השם או הכינוי שלי</h3>
+        <p className="muted">מופיע בתג שם קטן ליד מוצרים שאת/ה מוסיף/ה לרשימה</p>
         <input
           value={name}
-          placeholder="למשל: יוני"
+          placeholder="למשל: יוני או אבא"
           onChange={(e) => setName(e.target.value)}
           onBlur={() => setMyName(name)}
         />

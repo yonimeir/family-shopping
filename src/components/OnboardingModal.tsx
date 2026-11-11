@@ -26,6 +26,10 @@ export function OnboardingModal({
     setError('');
     const trimmedHome = homeName.trim() || 'הבית שלנו';
     const trimmedName = myName.trim();
+    if (!trimmedName) {
+      setError('נא להזין את שמך או כינוי כדי שבני הבית יראו מי הוסיף כל מוצר');
+      return;
+    }
     const id = createNewHome(trimmedHome, trimmedName);
     onComplete(id);
   };
@@ -38,13 +42,18 @@ export function OnboardingModal({
       setError('נא להזין קוד בית או להדביק קישור הזמנה');
       return;
     }
+    const trimmedName = myName.trim();
+    if (!trimmedName) {
+      setError('נא להזין את שמך או כינוי כדי שבני הבית יראו מי הוסיף כל מוצר');
+      return;
+    }
     const match = raw.match(/(?:[?&]f=)?([a-z0-9_-]{3,40})\s*$/i);
     if (!match) {
       setError('קוד הבית לא תקין. דוגמה לקוד תקין: home-abc123');
       return;
     }
     const targetId = match[1].toLowerCase();
-    joinHome(targetId, myName.trim());
+    joinHome(targetId, trimmedName);
     onComplete(targetId);
   };
 
@@ -63,14 +72,16 @@ export function OnboardingModal({
             <div className="invite-desc">הוזמנת להצטרף לבית עם הקוד: <strong>{pendingInviteId}</strong></div>
             <form onSubmit={handleJoin} className="onboarding-form">
               <label className="onboarding-field">
-                <span>מה השם שלך? (אופציונלי)</span>
+                <span>השם או הכינוי שלך *</span>
                 <input
                   type="text"
-                  placeholder="למשל: דנה"
+                  placeholder="למשל: דנה או אמא"
                   value={myName}
                   onChange={(e) => setMyName(e.target.value)}
+                  required
                   autoFocus
                 />
+                <span className="field-hint">יופיע בתג שם קטן ליד מוצרים שתוסיף/י לרשימה</span>
               </label>
 
               {error && <div className="onboarding-error">{error}</div>}
@@ -127,13 +138,15 @@ export function OnboardingModal({
                 </label>
 
                 <label className="onboarding-field">
-                  <span>השם שלך (כדי שיראו מי הוסיף מוצרים)</span>
+                  <span>השם או הכינוי שלך *</span>
                   <input
                     type="text"
-                    placeholder="למשל: יוני"
+                    placeholder="למשל: יוני או אבא"
                     value={myName}
                     onChange={(e) => setMyName(e.target.value)}
+                    required
                   />
+                  <span className="field-hint">יופיע בתג שם קטן ליד כל מוצר שתוסיף/י לרשימה</span>
                 </label>
 
                 {error && <div className="onboarding-error">{error}</div>}
@@ -148,7 +161,7 @@ export function OnboardingModal({
             ) : (
               <form onSubmit={handleJoin} className="onboarding-form">
                 <label className="onboarding-field">
-                  <span>קוד בית או קישור הזמנה</span>
+                  <span>קוד בית או קישור הזמנה *</span>
                   <input
                     type="text"
                     placeholder="למשל: home-a1b2c3 או הדבק קישור"
@@ -160,13 +173,15 @@ export function OnboardingModal({
                 </label>
 
                 <label className="onboarding-field">
-                  <span>השם שלך (אופציונלי)</span>
+                  <span>השם או הכינוי שלך *</span>
                   <input
                     type="text"
-                    placeholder="למשל: תמר"
+                    placeholder="למשל: תמר או אמא"
                     value={myName}
                     onChange={(e) => setMyName(e.target.value)}
+                    required
                   />
+                  <span className="field-hint">יופיע בתג שם קטן ליד מוצרים שתוסיף/י</span>
                 </label>
 
                 {error && <div className="onboarding-error">{error}</div>}

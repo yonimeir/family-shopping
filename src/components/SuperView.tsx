@@ -205,8 +205,8 @@ function SuperRow({
       </div>
       <span className="super-item-qty tabular-nums">{formatQty(e.qty, it.defaultUnit)}</span>
       {e.addedBy && (
-        <span className="super-item-author" title={`נוסף ע"י ${e.addedBy}`}>
-          {e.addedBy.slice(0, 1)}
+        <span className="super-item-author-tag" title={`נוסף ע"י ${e.addedBy}`}>
+          👤 {e.addedBy}
         </span>
       )}
     </button>
