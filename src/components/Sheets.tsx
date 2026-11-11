@@ -3,6 +3,7 @@ import { UNITS } from '../data/seed';
 import type { AppState, CatalogItem, Category } from '../types';
 import {
   appShareWhatsAppText,
+  buildShareText,
   cleanAppUrl,
   familyInviteWhatsAppText,
   familyLink,
@@ -432,6 +433,138 @@ export function SettingsSheet({
       <p className="muted center">
         {Object.keys(state.catalog).length} מוצרים במאגר · {backendKind === 'firebase' ? '☁️ מסונכרן' : '📱 מקומי'}
       </p>
+    </Sheet>
+  );
+}
+
+// ---------------- Share sheet ----------------
+export function ShareSheet({
+  state,
+  familyId,
+  onToast,
+  onClose,
+}: {
+  state: AppState;
+  familyId: string;
+  onToast: (msg: string) => void;
+  onClose: () => void;
+}) {
+  const homeName = getHomeName();
+  const inListCount = Object.values(state.list).filter((e) => state.catalog[e.itemId]).length;
+
+  const shareAppWhatsApp = () => {
+    const text = appShareWhatsAppText();
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const copyAppLink = async () => {
+    try {
+      await navigator.clipboard.writeText(cleanAppUrl());
+      onToast('הקישור הנקי לאפליקציה הועתק! 🔗');
+    } catch {
+      onToast('לא ניתן להעתיק אוטומטית');
+    }
+  };
+
+  const shareFamilyWhatsApp = () => {
+    const text = familyInviteWhatsAppText(familyId, homeName);
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const copyFamilyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(familyLink(familyId));
+      onToast('קישור להצטרפות לבית הועתק! 🔗');
+    } catch {
+      onToast('לא ניתן להעתיק אוטומטית');
+    }
+  };
+
+  const shareShoppingList = async () => {
+    const text = buildShareText(state);
+    if (!text) {
+      onToast('אין כרגע מוצרים ברשימה');
+      return;
+    }
+    try {
+      if (navigator.share) {
+        await navigator.share({ text });
+      } else {
+        await navigator.clipboard.writeText(text);
+        onToast('הרשימה הועתקה, אפשר לשלוח בוואטסאפ 📋');
+      }
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') {
+        await navigator.clipboard?.writeText(text).catch(() => {});
+        onToast('הרשימה הועתקה 📋');
+      }
+    }
+  };
+
+  return (
+    <Sheet title="שיתוף" onClose={onClose}>
+      <div className="share-sheet-container">
+        {/* Section 1: Share clean app link with friends */}
+        <section className="share-sheet-card share-card-clean">
+          <div className="share-card-header">
+            <span className="share-card-icon">🌟</span>
+            <div className="share-card-text">
+              <h3>המלצה לחברים (קישור נקי)</h3>
+              <p>קישור להקמת בית עצמאי – ללא שיתוף הרשימה הפרטית שלכם</p>
+            </div>
+          </div>
+          <div className="home-share-actions">
+            <button type="button" className="btn-share-app-wa" onClick={shareAppWhatsApp}>
+              💬 שיתוף בוואטסאפ
+            </button>
+            <button type="button" className="btn-secondary" onClick={copyAppLink}>
+              🔗 העתקת קישור
+            </button>
+          </div>
+        </section>
+
+        {/* Section 2: Invite household member to this home */}
+        <section className="share-sheet-card share-card-family">
+          <div className="share-card-header">
+            <span className="share-card-icon">👨‍👩‍👧</span>
+            <div className="share-card-text">
+              <h3>הזמנה לבית שלכם {homeName ? `(${homeName})` : ''}</h3>
+              <p>סנכרון מלא באותה רשימת קניות בזמן אמת עם בני הבית</p>
+            </div>
+          </div>
+          <div className="home-share-actions">
+            <button type="button" className="btn-whatsapp" onClick={shareFamilyWhatsApp}>
+              💬 הזמנה בוואטסאפ
+            </button>
+            <button type="button" className="btn-secondary" onClick={copyFamilyLink}>
+              🔗 העתקת קישור
+            </button>
+          </div>
+        </section>
+
+        {/* Section 3: Send current shopping list as text */}
+        <section className="share-sheet-card share-card-list">
+          <div className="share-card-header">
+            <span className="share-card-icon">📋</span>
+            <div className="share-card-text">
+              <h3>שליחת רשימת הקניות הנוכחית</h3>
+              <p>{inListCount > 0 ? `${inListCount} מוצרים ברשימה כרגע` : 'אין כרגע מוצרים ברשימה'}</p>
+            </div>
+          </div>
+          <div className="home-share-actions">
+            <button
+              type="button"
+              className="btn-secondary share-btn-full"
+              disabled={inListCount === 0}
+              onClick={shareShoppingList}
+            >
+              📄 שליחת הרשימה כטקסט
+            </button>
+          </div>
+        </section>
+      </div>
     </Sheet>
   );
 }

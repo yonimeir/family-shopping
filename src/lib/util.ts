@@ -137,7 +137,12 @@ export function cleanAppUrl(): string {
 
 export function appShareWhatsAppText(): string {
   const url = cleanAppUrl();
-  return `היי! מצאתי אפליקציה מעולה וחינמית לרשימת קניות משפחתית מסונכרנת בזמן אמת – "אין כלום בבית" 🛒🥑\nמוזמנים להקים בית ורשימה משלכם בשניות:\n${url}`;
+  return `"מאמי, תקנה גם קוטג' וביצים!" 🤦
+כדי לפתור את הסאגה הזאת פותחה אפליקציה קטנה וגאונית לרשימת קניות משפחתית: "אין כלום בבית" 🧀🛒
+
+מסמנים מה שחסר (עם תמונות של הכל!), וזה מתעדכן בשנייה לכולם.
+לגמרי חינם ובלי הרשמה:
+${url}`;
 }
 
 export function familyInviteWhatsAppText(familyId: string, homeName?: string) {

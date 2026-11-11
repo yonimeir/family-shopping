@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CatalogView } from './components/CatalogView';
-import { AddItemSheet, CheckoutSheet, EditItemSheet, NoteSheet, SettingsSheet } from './components/Sheets';
+import { AddItemSheet, CheckoutSheet, EditItemSheet, NoteSheet, SettingsSheet, ShareSheet } from './components/Sheets';
 import { SuperView } from './components/SuperView';
 import { Toast, type ToastData } from './components/ui';
-import { buildShareText, getPendingInviteFromUrl, haptic, resolveFamilyId } from './lib/util';
+import { getPendingInviteFromUrl, haptic, resolveFamilyId } from './lib/util';
 import { useStore } from './lib/useStore';
 import type { CatalogItem, ListEntry } from './types';
 import { IconHome, IconCart, IconShare, IconSettings } from './components/Icons';
@@ -18,6 +18,7 @@ type SheetState =
   | { kind: 'note'; item: CatalogItem }
   | { kind: 'checkout' }
   | { kind: 'settings' }
+  | { kind: 'share' }
   | null;
 
 export default function App() {
@@ -109,23 +110,6 @@ export default function App() {
   // for ~650ms and the "collected" section allows un-picking.
   const onTogglePurchased = useCallback((id: string) => actions.togglePurchased(id), [actions]);
 
-  const share = async () => {
-    const text = buildShareText(state);
-    if (!text) return showToast('אין כרגע מוצרים ברשימה');
-    try {
-      if (navigator.share) await navigator.share({ text });
-      else {
-        await navigator.clipboard.writeText(text);
-        showToast('הרשימה הועתקה, אפשר לשלוח בוואטסאפ 📋');
-      }
-    } catch (e) {
-      if ((e as Error).name !== 'AbortError') {
-        await navigator.clipboard?.writeText(text).catch(() => {});
-        showToast('הרשימה הועתקה 📋');
-      }
-    }
-  };
-
   if (!familyId) {
     return (
       <div className="app">
@@ -168,7 +152,7 @@ export default function App() {
               {remaining > 0 && <span className="mode-count">{remaining}</span>}
             </button>
           </div>
-          <button className="icon-btn top-icon" onClick={share} aria-label="שיתוף / העתקת רשימה">
+          <button className="icon-btn top-icon" onClick={() => setSheet({ kind: 'share' })} aria-label="שיתוף והזמנה">
             <IconShare className="w-5 h-5" />
           </button>
           <button className="icon-btn top-icon" onClick={() => setSheet({ kind: 'settings' })} aria-label="הגדרות">
@@ -268,6 +252,14 @@ export default function App() {
           familyId={familyId}
           backendKind={kind}
           onSaveCategories={actions.saveCategories}
+          onToast={showToast}
+          onClose={() => setSheet(null)}
+        />
+      )}
+      {sheet?.kind === 'share' && (
+        <ShareSheet
+          state={state}
+          familyId={familyId}
           onToast={showToast}
           onClose={() => setSheet(null)}
         />

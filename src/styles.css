@@ -1629,3 +1629,79 @@ input, textarea { font: inherit; color: inherit; }
 .btn-share-app-wa:active {
   transform: scale(0.98);
 }
+
+/* ---------- Share Sheet Styles ---------- */
+.share-sheet-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0 16px;
+}
+
+.share-sheet-card {
+  border-radius: 16px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.share-card-clean {
+  background: #fdfaf3;
+  border: 1px solid #fed7aa;
+}
+
+.share-card-family {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}
+
+.share-card-list {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+}
+
+.share-card-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.share-card-icon {
+  font-size: 24px;
+  line-height: 1;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.share-card-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.share-card-text h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: #1e293b;
+}
+
+.share-card-clean .share-card-text h3 {
+  color: #7c2d12;
+}
+
+.share-card-text p {
+  margin: 4px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #64748b;
+}
+
+.share-card-clean .share-card-text p {
+  color: #9a3412;
+}
+
+.share-btn-full {
+  width: 100%;
+  justify-content: center;
+}
