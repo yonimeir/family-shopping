@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppState, CatalogItem, ListEntry } from '../types';
-import { formatQty, getDeviceId, sortedCategories } from '../lib/util';
+import { formatQty, getDeviceId, playAlertChime, sortedCategories } from '../lib/util';
 import { getProductPackshot, getItemEmoji } from '../lib/productImages';
 import { IconCart, IconHome, IconNote, IconCheck } from './Icons';
 
@@ -12,11 +12,23 @@ interface Props {
   onGoHome: () => void;
 }
 
+interface PassedAlertItem {
+  itemId: string;
+  itemName: string;
+  categoryId: string;
+  categoryName: string;
+  categoryIcon: string;
+  addedBy?: string;
+  addedAt: number;
+}
+
 const HOLD_MS = 650;
 
 export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onGoHome }: Props) {
   const [held, setHeld] = useState<Set<string>>(new Set());
   const [showDone, setShowDone] = useState(false);
+  const [passedAlerts, setPassedAlerts] = useState<PassedAlertItem[]>([]);
+  const prevListRef = useRef<Record<string, ListEntry>>(state.list);
   const me = useMemo(getDeviceId, []);
 
   useWakeLock();
@@ -40,7 +52,10 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
     );
   };
 
-  const sections = sortedCategories(state.categories)
+  const sortedCats = useMemo(() => sortedCategories(state.categories), [state.categories]);
+  const catOrder = useMemo(() => new Map(sortedCats.map((c, i) => [c.id, i])), [sortedCats]);
+
+  const sections = sortedCats
     .map((cat) => {
       const rows = entries
         .filter((e) => state.catalog[e.itemId].categoryId === cat.id)
@@ -51,6 +66,97 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
       return { cat, todo, got, total: rows.length };
     })
     .filter((s) => s.total > 0);
+
+  // Track furthest reached category index and completed categories
+  const { maxCollectedIndex, completedCatIds } = useMemo(() => {
+    let maxIdx = -1;
+    const completed = new Set<string>();
+
+    for (const section of sections) {
+      if (section.got.length > 0) {
+        const idx = catOrder.get(section.cat.id) ?? -1;
+        if (idx > maxIdx) maxIdx = idx;
+      }
+      if (section.todo.length === 0 && section.got.length > 0) {
+        completed.add(section.cat.id);
+      }
+    }
+    return { maxCollectedIndex: maxIdx, completedCatIds: completed };
+  }, [sections, catOrder]);
+
+  // Detect items newly added to departments already passed
+  useEffect(() => {
+    const prevList = prevListRef.current;
+    const incomingPassed: PassedAlertItem[] = [];
+
+    for (const [id, entry] of Object.entries(state.list)) {
+      const prevEntry = prevList[id];
+      const isNew = !prevEntry && entry.addedAt > enteredAt && entry.addedByDevice !== me && !entry.isPurchased;
+      if (isNew) {
+        const it = state.catalog[id];
+        if (it) {
+          const catIdx = catOrder.get(it.categoryId) ?? 999;
+          const isPassed = catIdx < maxCollectedIndex || completedCatIds.has(it.categoryId);
+          if (isPassed) {
+            const cat = state.categories.find((c) => c.id === it.categoryId);
+            incomingPassed.push({
+              itemId: id,
+              itemName: it.name,
+              categoryId: it.categoryId,
+              categoryName: cat?.name || 'מחלקה קודמת',
+              categoryIcon: cat?.icon || '🛒',
+              addedBy: entry.addedBy,
+              addedAt: entry.addedAt,
+            });
+          }
+        }
+      }
+    }
+
+    if (incomingPassed.length > 0) {
+      setPassedAlerts((prev) => {
+        const existing = new Set(prev.map((a) => a.itemId));
+        const brandNew = incomingPassed.filter((a) => !existing.has(a.itemId));
+        if (!brandNew.length) return prev;
+
+        playAlertChime();
+        try {
+          navigator.vibrate?.([150, 80, 150]);
+        } catch {
+          /* unsupported */
+        }
+
+        return [...brandNew, ...prev];
+      });
+    }
+
+    prevListRef.current = state.list;
+  }, [state.list, state.catalog, state.categories, enteredAt, me, catOrder, maxCollectedIndex, completedCatIds]);
+
+  // Clear alerts if the shopper checks off the item
+  useEffect(() => {
+    setPassedAlerts((prev) =>
+      prev.filter((alert) => {
+        const entry = state.list[alert.itemId];
+        return entry && !entry.isPurchased;
+      })
+    );
+  }, [state.list]);
+
+  const scrollToCategory = (catId: string) => {
+    const el = document.getElementById(`super-cat-${catId}`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      el.classList.add('super-cat-flash');
+      window.setTimeout(() => el.classList.remove('super-cat-flash'), 2000);
+    }
+  };
+
+  const dismissAlert = (itemId: string) => {
+    setPassedAlerts((prev) => prev.filter((a) => a.itemId !== itemId));
+  };
+
+  const passedAlertMap = useMemo(() => new Set(passedAlerts.map((a) => a.itemId)), [passedAlerts]);
 
   const collected = sections.flatMap((s) => s.got);
   const pct = total ? Math.round((done / total) * 100) : 0;
@@ -88,9 +194,49 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
         </div>
       </div>
 
+      {passedAlerts.length > 0 && (
+        <aside className="super-alert-banner-container" aria-live="assertive">
+          {passedAlerts.map((alert) => (
+            <div key={alert.itemId} className="super-alert-banner">
+              <div className="super-alert-icon-wrap" aria-hidden="true">
+                ⚠️
+              </div>
+              <div className="super-alert-content">
+                <span className="super-alert-badge">מחלקה שכבר עברת</span>
+                <p className="super-alert-text">
+                  נוסף: <strong>{alert.itemName}</strong> ({alert.categoryIcon} {alert.categoryName})
+                </p>
+                {alert.addedBy && (
+                  <div className="super-alert-author">
+                    נוסף ע״י <b>{alert.addedBy}</b> מהבית
+                  </div>
+                )}
+              </div>
+              <div className="super-alert-actions">
+                <button
+                  type="button"
+                  className="super-alert-btn-jump"
+                  onClick={() => scrollToCategory(alert.categoryId)}
+                >
+                  קפוץ למחלקה 📍
+                </button>
+                <button
+                  type="button"
+                  className="super-alert-btn-close"
+                  onClick={() => dismissAlert(alert.itemId)}
+                  aria-label="סגירת התראה"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
+        </aside>
+      )}
+
       {sections.map(({ cat, todo, total: catTotal, got }) =>
         todo.length === 0 ? null : (
-          <section key={cat.id} className="super-category-card">
+          <section key={cat.id} id={`super-cat-${cat.id}`} className="super-category-card">
             <header className="super-category-header">
               <h2 className="super-category-title font-frank">{cat.name}</h2>
               <span className="super-category-count tabular-nums">
@@ -104,6 +250,7 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
                   e={e}
                   it={it}
                   isNew={e.addedAt > enteredAt && e.addedByDevice !== me}
+                  isPassedDepartment={passedAlertMap.has(e.itemId)}
                   onTap={tap}
                 />
               ))}
@@ -151,11 +298,13 @@ function SuperRow({
   e,
   it,
   isNew,
+  isPassedDepartment,
   onTap,
 }: {
   e: ListEntry;
   it: CatalogItem;
   isNew?: boolean;
+  isPassedDepartment?: boolean;
   onTap: (id: string) => void;
 }) {
   const packshot = getProductPackshot(it.name, it.categoryId);
@@ -194,7 +343,13 @@ function SuperRow({
       <div className="super-item-content">
         <div className="super-item-title-row">
           <span className="super-item-name font-frank">{it.name}</span>
-          {isNew && <span className="super-badge-new">נוסף מהבית 🔔</span>}
+          {isPassedDepartment ? (
+            <span className="super-badge-passed" title="המוצר נוסף אחרי שכבר עברת את המחלקה הזו">
+              ⚠️ נוסף אחרי שעברת!
+            </span>
+          ) : isNew ? (
+            <span className="super-badge-new">נוסף מהבית 🔔</span>
+          ) : null}
         </div>
         {e.notes && (
           <span className="super-item-note">
