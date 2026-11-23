@@ -16,9 +16,10 @@ interface Props {
   onNote: (item: CatalogItem) => void;
   onEdit: (item: CatalogItem) => void;
   onAddNew: (name: string) => void;
+  onProgrammaticScroll?: (collapse: boolean) => void;
 }
 
-export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdit, onAddNew }: Props) {
+export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdit, onAddNew, onProgrammaticScroll }: Props) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [coreSnapshot, setCoreSnapshot] = useState<Set<string>>(new Set());
@@ -58,20 +59,22 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
     }
     if (f === 'cart') setCartSnapshot(new Set(Object.keys(state.list)));
     setFilter(f);
+    onProgrammaticScroll?.(false);
     window.scrollTo({ top: 0 });
   };
 
   // Scroll-spy for the category tabs + quick-search reveal.
   useEffect(() => {
     const onScroll = () => {
-      const topH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-h')) || 0;
+      const rootStyle = getComputedStyle(document.documentElement);
+      const stickyH = parseFloat(rootStyle.getPropertyValue('--sticky-h')) || parseFloat(rootStyle.getPropertyValue('--top-h')) || 0;
       let current = sections[0]?.cat.id ?? '';
       for (const s of sections) {
         const el = document.getElementById(`cat-${s.cat.id}`);
-        if (el && el.getBoundingClientRect().top - topH <= 8) current = s.cat.id;
+        if (el && el.getBoundingClientRect().top - stickyH <= 8) current = s.cat.id;
       }
       setActiveCat(current);
-      setScrolledPastSearch(window.scrollY > 90);
+      setScrolledPastSearch((prev) => (prev ? window.scrollY > 65 : window.scrollY > 105));
     };
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -87,11 +90,18 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
   const jumpTo = (catId: string) => {
     const el = document.getElementById(`cat-${catId}`);
     if (!el) return;
-    const topH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-h')) || 0;
-    window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - topH + 2, behavior: 'smooth' });
+    const rootStyle = getComputedStyle(document.documentElement);
+    const fullH = parseFloat(rootStyle.getPropertyValue('--top-h')) || 0;
+    const rowH = parseFloat(rootStyle.getPropertyValue('--topbar-row-h')) || 60;
+    const rawDelta = el.getBoundingClientRect().top;
+    const willCollapse = rawDelta > 40 && rawDelta + window.scrollY > 90;
+    const targetOffset = willCollapse ? Math.max(44, fullH - rowH) : fullH;
+    onProgrammaticScroll?.(willCollapse);
+    window.scrollTo({ top: Math.max(0, rawDelta + window.scrollY - targetOffset + 2), behavior: 'smooth' });
   };
 
   const focusSearchFromTop = () => {
+    onProgrammaticScroll?.(false);
     window.scrollTo({ top: 0, behavior: 'smooth' });
     window.setTimeout(() => searchInputRef.current?.focus(), 260);
   };
@@ -109,18 +119,18 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
 
   // Only the slim horizontal category rail + quick-search icon stay sticky in the top header
   const stickyTabsBar = (
-    <div className="cat-tabs-bar">
-      <button
-        type="button"
-        className={`cat-quick-search ${scrolledPastSearch ? 'is-visible' : ''}`}
-        tabIndex={scrolledPastSearch ? 0 : -1}
-        aria-hidden={!scrolledPastSearch}
-        onClick={focusSearchFromTop}
-        aria-label="חזרה לחיפוש"
-        title="חיפוש מהיר"
-      >
-        <IconSearch className="w-4 h-4" />
-      </button>
+    <div className={`cat-tabs-bar${scrolledPastSearch ? ' has-quick-search' : ''}`}>
+      {scrolledPastSearch && (
+        <button
+          type="button"
+          className="cat-quick-search"
+          onClick={focusSearchFromTop}
+          aria-label="חזרה לחיפוש"
+          title="חיפוש מהיר"
+        >
+          <IconSearch className="w-4 h-4" />
+        </button>
+      )}
       <div className="cat-tabs" ref={tabsRef} role="tablist" aria-label="ניווט מחלקות">
         {cats.map((c) => {
           const countInCat = catCounts[c.id] || 0;

@@ -31,17 +31,106 @@ export default function App() {
   const [sheet, setSheet] = useState<SheetState>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+  const [headerCollapsed, setHeaderCollapsed] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
+  const topbarRowRef = useRef<HTMLDivElement>(null);
+  const safeShieldRef = useRef<HTMLDivElement>(null);
+  const ignoreScrollUntilRef = useRef(0);
+  const metricsRef = useRef({ shieldH: 0, fullH: 62, rowH: 60 });
 
-  // Expose sticky header height to CSS / scroll math.
+  const syncStickyVars = useCallback((collapsed: boolean, currentMode: Mode) => {
+    const { shieldH, fullH, rowH } = metricsRef.current;
+    const rootStyle = document.documentElement.style;
+    rootStyle.setProperty('--top-h', `${shieldH + fullH}px`);
+    rootStyle.setProperty('--topbar-row-h', `${rowH}px`);
+    const collapsedH = shieldH + Math.max(0, fullH - rowH);
+    rootStyle.setProperty('--sticky-h', `${currentMode === 'home' && collapsed ? collapsedH : shieldH + fullH}px`);
+  }, []);
+
+  // Expose sticky header height and collapsible row metrics to CSS / scroll math.
   useEffect(() => {
-    const el = headerRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() =>
-      document.documentElement.style.setProperty('--top-h', `${el.getBoundingClientRect().height}px`)
-    );
-    ro.observe(el);
+    const updateMetrics = () => {
+      const shieldH = safeShieldRef.current?.getBoundingClientRect().height ?? 0;
+      const fullH = headerRef.current?.getBoundingClientRect().height ?? 62;
+      const rowH = topbarRowRef.current?.getBoundingClientRect().height ?? 60;
+      metricsRef.current = { shieldH, fullH, rowH };
+      syncStickyVars(headerCollapsed, mode);
+    };
+    updateMetrics();
+    const ro = new ResizeObserver(updateMetrics);
+    if (headerRef.current) ro.observe(headerRef.current);
+    if (topbarRowRef.current) ro.observe(topbarRowRef.current);
+    if (safeShieldRef.current) ro.observe(safeShieldRef.current);
     return () => ro.disconnect();
+  }, [headerCollapsed, mode, syncStickyVars]);
+
+  useEffect(() => {
+    syncStickyVars(headerCollapsed, mode);
+  }, [headerCollapsed, mode, syncStickyVars]);
+
+  // Collapse topbar row on downward scroll in home mode; reveal promptly on upward scroll.
+  useEffect(() => {
+    let lastY = window.scrollY;
+    let downAccum = 0;
+    let upAccum = 0;
+
+    const onScroll = () => {
+      const y = window.scrollY;
+      setScrolled(y > 12);
+
+      if (mode !== 'home') {
+        setHeaderCollapsed(false);
+        lastY = y;
+        downAccum = 0;
+        upAccum = 0;
+        return;
+      }
+
+      if (y <= 44) {
+        setHeaderCollapsed(false);
+        downAccum = 0;
+        upAccum = 0;
+        lastY = y;
+        return;
+      }
+
+      if (performance.now() < ignoreScrollUntilRef.current) {
+        lastY = y;
+        return;
+      }
+
+      if (y + window.innerHeight >= document.documentElement.scrollHeight - 6) {
+        lastY = y;
+        return;
+      }
+
+      const dy = y - lastY;
+      lastY = y;
+
+      if (dy > 0) {
+        upAccum = 0;
+        downAccum += dy;
+        if (y > 76 && downAccum >= 18) {
+          setHeaderCollapsed(true);
+        }
+      } else if (dy < 0) {
+        downAccum = 0;
+        upAccum += -dy;
+        if (upAccum >= 14) {
+          setHeaderCollapsed(false);
+        }
+      }
+    };
+
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [mode]);
+
+  const onProgrammaticScroll = useCallback((collapse: boolean) => {
+    ignoreScrollUntilRef.current = performance.now() + 450;
+    setHeaderCollapsed(collapse);
   }, []);
 
   const showToast = useCallback((text: string, undo?: () => void) => {
@@ -52,6 +141,7 @@ export default function App() {
   const setMode = (m: Mode) => {
     if (m === mode) return;
     haptic();
+    setHeaderCollapsed(false);
     if (m === 'super') {
       const now = Date.now();
       localStorage.setItem('fs:superEnteredAt', String(now));
@@ -60,12 +150,35 @@ export default function App() {
     localStorage.setItem('fs:mode', m);
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+    const doc = document as Document & {
+      startViewTransition?: (cb: () => void) => { finished?: Promise<unknown> } | undefined;
+    };
     if (!reduced && typeof doc.startViewTransition === 'function') {
-      doc.startViewTransition(() => {
-        flushSync(() => setModeRaw(m));
+      const root = document.documentElement;
+      root.classList.add('is-mode-transitioning');
+      let cleaned = false;
+      const cleanup = () => {
+        if (cleaned) return;
+        cleaned = true;
+        window.clearTimeout(fallbackTimer);
+        root.classList.remove('is-mode-transitioning');
+      };
+      const fallbackTimer = window.setTimeout(cleanup, 450);
+      try {
+        const vt = doc.startViewTransition(() => {
+          flushSync(() => setModeRaw(m));
+          window.scrollTo({ top: 0 });
+        });
+        if (vt?.finished) {
+          vt.finished.finally(cleanup);
+        } else {
+          cleanup();
+        }
+      } catch {
+        cleanup();
+        setModeRaw(m);
         window.scrollTo({ top: 0 });
-      });
+      }
     } else {
       setModeRaw(m);
       window.scrollTo({ top: 0 });
@@ -120,8 +233,12 @@ export default function App() {
 
   return (
     <div className={`app mode-${mode}`}>
-        <header className="topbar" ref={headerRef}>
-        <div className="topbar-row">
+        <div className="topbar-safe-shield" ref={safeShieldRef} aria-hidden="true" />
+        <header
+          className={`topbar${mode === 'home' && headerCollapsed ? ' topbar-collapsed' : ''}${scrolled ? ' topbar-scrolled' : ''}`}
+          ref={headerRef}
+        >
+        <div className="topbar-row" ref={topbarRowRef}>
           <button
             type="button"
             className="topbar-brand"
@@ -179,6 +296,7 @@ export default function App() {
             onNote={onNote}
             onEdit={onEdit}
             onAddNew={onAddNew}
+            onProgrammaticScroll={onProgrammaticScroll}
           />
         ) : (
           <SuperView
