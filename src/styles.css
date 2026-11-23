@@ -1037,6 +1037,12 @@ html.is-mode-transitioning .topbar {
   margin-block-end: 12px;
   box-shadow: var(--card-shadow);
   scroll-margin-block-start: calc(var(--top-h, 62px) + 84px);
+  transition: opacity 210ms ease, transform 230ms var(--ease-out-quint);
+}
+.super-category-leaving {
+  opacity: 0;
+  transform: translateY(12px) scale(0.985);
+  pointer-events: none;
 }
 .super-category-header {
   display: flex;
@@ -1063,7 +1069,12 @@ html.is-mode-transitioning .topbar {
   flex-direction: column;
   gap: 8px;
 }
+.super-row-slot {
+  width: 100%;
+}
 .super-item-row {
+  position: relative;
+  overflow: hidden;
   width: 100%;
   display: flex;
   align-items: center;
@@ -1167,17 +1178,49 @@ html.is-mode-transitioning .topbar {
   display: inline-block;
   max-width: 100%;
 }
-.super-item-name-text::after {
-  content: '';
+/* Hand-drawn organic graphite pencil strike sweeping RTL across the card */
+.super-pencil-overlay {
   position: absolute;
-  inset-inline: 0;
-  inset-block-start: 54%;
-  height: 1.75px;
-  background: currentColor;
-  border-radius: 2px;
-  transform: scaleX(0);
-  transform-origin: right center;
-  transition: transform 230ms var(--ease-out-quint) 50ms;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 3;
+}
+.super-pencil-smudge,
+.super-pencil-main,
+.super-pencil-grain {
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 1;
+}
+.super-pencil-smudge {
+  stroke: oklch(0.30 0.014 245 / 0.14);
+  stroke-width: 5.2px;
+  transition: stroke-dashoffset 250ms cubic-bezier(0.22, 1, 0.36, 1) 40ms;
+}
+.super-pencil-main {
+  stroke: oklch(0.28 0.015 250 / 0.80);
+  stroke-width: 2.5px;
+  transition: stroke-dashoffset 240ms cubic-bezier(0.22, 1, 0.36, 1) 25ms;
+}
+.super-pencil-grain {
+  stroke: oklch(0.42 0.014 85 / 0.46);
+  stroke-width: 1.35px;
+  transition: stroke-dashoffset 220ms cubic-bezier(0.22, 1, 0.36, 1) 70ms;
+}
+.super-item-done .super-pencil-smudge,
+.super-item-done .super-pencil-main,
+.super-item-done .super-pencil-grain {
+  stroke-dashoffset: 0;
+}
+.super-item-settled .super-pencil-smudge,
+.super-item-settled .super-pencil-main,
+.super-item-settled .super-pencil-grain {
+  transition: none;
+  stroke-dashoffset: 0;
 }
 .super-item-note { font-size: 12px; color: oklch(0.50 0.14 75); }
 .super-item-qty {
@@ -1389,22 +1432,45 @@ html.is-mode-transitioning .topbar {
   }
 }
 
-/* Purchased Item */
+/* Purchased Item (child-level dimming keeps graphite pencil stroke & multiply blend crisp) */
 .super-item-done {
-  opacity: 0.50;
-  background: transparent;
+  background: oklch(0.968 0.006 80 / 0.48);
   border-color: var(--border-subtle);
 }
-.super-item-done .super-item-name-text::after {
-  transform: scaleX(1);
+.super-item-done .super-item-content,
+.super-item-done .super-item-qty,
+.super-item-done .author-chip {
+  opacity: 0.48;
+  transition: opacity 200ms ease;
+}
+.super-item-done .super-item-img {
+  opacity: 0.55;
+  filter: saturate(0.42);
+  transition: opacity 200ms ease, filter 200ms ease;
 }
 .super-item-done .super-checkbox {
   background: var(--brand-emerald);
   border-color: var(--brand-emerald);
   transform: scale(1.04);
 }
+.super-item-leaving {
+  opacity: 0;
+  transform: translateY(18px) scale(0.96);
+  pointer-events: none;
+  transition: transform 230ms var(--ease-out-quint), opacity 200ms ease;
+}
+.super-item-arriving {
+  animation: super-row-arrive 220ms var(--ease-out-quint) both;
+}
+@keyframes super-row-arrive {
+  from { opacity: 0; transform: translateY(-8px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
 
-.super-collected-module { margin-block-start: 22px; }
+.super-collected-module {
+  margin-block-start: 22px;
+  animation: super-row-arrive 240ms var(--ease-out-quint) both;
+}
 .super-collected-toggle {
   width: 100%;
   display: flex;

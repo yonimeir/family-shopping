@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { AppState, CatalogItem, ListEntry } from '../types';
 import { formatQty, getDeviceId, playAlertChime, sortedCategories } from '../lib/util';
 import { getProductPackshot, getItemEmoji } from '../lib/productImages';
@@ -34,34 +34,185 @@ interface PassedAlertItem {
   addedAt: number;
 }
 
-const HOLD_MS = 650;
+const STRIKE_HOLD_MS = 430;
+const LEAVE_MS = 230;
+
+type StrikePhase = 'striking' | 'leaving';
+
+interface FlipSnapshotItem {
+  top: number;
+  parentCatId?: string;
+}
+
+const PENCIL_PATHS = [
+  {
+    main: 'M 276 34 C 238 30, 198 33, 156 29 C 114 25, 62 30, 13 26',
+    grain: 'M 271 31 C 228 34, 184 28, 138 32 C 94 35, 52 27, 17 29',
+  },
+  {
+    main: 'M 276 26 C 232 29, 190 25, 148 31 C 106 36, 58 31, 13 35',
+    grain: 'M 271 29 C 226 26, 182 32, 136 29 C 92 26, 48 34, 18 32',
+  },
+  {
+    main: 'M 275 35 C 238 33, 196 28, 152 28 C 108 28, 60 32, 13 27',
+    grain: 'M 269 32 C 224 29, 178 33, 130 30 C 86 27, 46 31, 17 30',
+  },
+] as const;
+
+function getPencilVariant(id: string): 0 | 1 | 2 {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return (Math.abs(hash) % 3) as 0 | 1 | 2;
+}
 
 export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onGoHome }: Props) {
-  const [held, setHeld] = useState<Set<string>>(new Set());
+  const [heldPhases, setHeldPhases] = useState<Record<string, StrikePhase>>({});
   const [showDone, setShowDone] = useState(false);
   const [passedAlerts, setPassedAlerts] = useState<PassedAlertItem[]>([]);
   const prevListRef = useRef<Record<string, ListEntry>>(state.list);
+  const timersRef = useRef<Map<string, { leave: number; remove: number }>>(new Map());
+  const flipSnapshotRef = useRef<Map<string, FlipSnapshotItem> | null>(null);
+  const justArrivedRef = useRef<Set<string>>(new Set());
+  const collectedToggleRef = useRef<HTMLButtonElement>(null);
+  const containerRef = useRef<HTMLElement>(null);
   const me = useMemo(getDeviceId, []);
 
   useWakeLock();
+
+  useEffect(() => {
+    const timers = timersRef.current;
+    return () => {
+      for (const pair of timers.values()) {
+        window.clearTimeout(pair.leave);
+        window.clearTimeout(pair.remove);
+      }
+      timers.clear();
+    };
+  }, []);
+
+  const captureFlipSnapshot = () => {
+    const root = containerRef.current;
+    if (!root) return;
+    const map = new Map<string, FlipSnapshotItem>();
+    root.querySelectorAll<HTMLElement>('[data-flip-id]').forEach((el) => {
+      const id = el.dataset.flipId;
+      if (!id) return;
+      map.set(id, {
+        top: el.getBoundingClientRect().top,
+        parentCatId: el.dataset.flipParent,
+      });
+    });
+    flipSnapshotRef.current = map;
+  };
+
+  useLayoutEffect(() => {
+    const prev = flipSnapshotRef.current;
+    flipSnapshotRef.current = null;
+    if (!prev || !containerRef.current) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const root = containerRef.current;
+    const catDeltas = new Map<string, number>();
+
+    root.querySelectorAll<HTMLElement>('[data-flip-kind="cat"][data-flip-id]').forEach((el) => {
+      const id = el.dataset.flipId;
+      if (!id) return;
+      const before = prev.get(id);
+      if (!before) return;
+      catDeltas.set(id, before.top - el.getBoundingClientRect().top);
+    });
+
+    root.querySelectorAll<HTMLElement>('[data-flip-id]').forEach((el) => {
+      const id = el.dataset.flipId;
+      if (!id) return;
+      const before = prev.get(id);
+      if (!before) return;
+      let deltaY = before.top - el.getBoundingClientRect().top;
+      if (el.dataset.flipKind === 'row' && el.dataset.flipParent) {
+        deltaY -= catDeltas.get(el.dataset.flipParent) ?? 0;
+      }
+      if (Math.abs(deltaY) > 1) {
+        el.animate(
+          [{ transform: `translateY(${deltaY}px)` }, { transform: 'translateY(0)' }],
+          { duration: 240, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' }
+        );
+      }
+    });
+  }, [heldPhases, state.list]);
 
   const entries = Object.values(state.list).filter((e) => state.catalog[e.itemId]);
   const total = entries.length;
   const done = entries.filter((e) => e.isPurchased).length;
 
+  const markArriving = (id: string) => {
+    justArrivedRef.current.add(id);
+    window.setTimeout(() => {
+      justArrivedRef.current.delete(id);
+    }, 280);
+  };
+
   const tap = (id: string) => {
+    const currentEntry = state.list[id];
+    const existing = timersRef.current.get(id);
+    if (existing) {
+      window.clearTimeout(existing.leave);
+      window.clearTimeout(existing.remove);
+      timersRef.current.delete(id);
+    }
+
+    // Checking off an item in todo -> two-stage pencil strike then smooth leave + FLIP
+    if (!currentEntry?.isPurchased) {
+      onTogglePurchased(id);
+      navigator.vibrate?.(15);
+      setHeldPhases((prev) => ({ ...prev, [id]: 'striking' }));
+
+      const leaveTimer = window.setTimeout(() => {
+        setHeldPhases((prev) => (prev[id] ? { ...prev, [id]: 'leaving' } : prev));
+      }, STRIKE_HOLD_MS);
+
+      const removeTimer = window.setTimeout(() => {
+        captureFlipSnapshot();
+        markArriving(id);
+        timersRef.current.delete(id);
+        setHeldPhases((prev) => {
+          if (!(id in prev)) return prev;
+          const next = { ...prev };
+          delete next[id];
+          return next;
+        });
+        window.requestAnimationFrame(() => {
+          if (!window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+            collectedToggleRef.current?.animate(
+              [{ transform: 'scale(1)' }, { transform: 'scale(1.025)' }, { transform: 'scale(1)' }],
+              { duration: 220, easing: 'cubic-bezier(0.23, 1, 0.32, 1)' }
+            );
+          }
+        });
+      }, STRIKE_HOLD_MS + LEAVE_MS);
+
+      timersRef.current.set(id, { leave: leaveTimer, remove: removeTimer });
+      return;
+    }
+
+    // Undo mid-strike or mid-leave while still in its department card
+    if (id in heldPhases) {
+      onTogglePurchased(id);
+      navigator.vibrate?.(10);
+      setHeldPhases((prev) => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      return;
+    }
+
+    // Un-check from "כבר בעגלה" -> smoothly FLIP item back into its department
+    captureFlipSnapshot();
+    markArriving(id);
     onTogglePurchased(id);
-    navigator.vibrate?.(15);
-    setHeld((h) => new Set(h).add(id));
-    window.setTimeout(
-      () =>
-        setHeld((h) => {
-          const n = new Set(h);
-          n.delete(id);
-          return n;
-        }),
-      HOLD_MS
-    );
+    navigator.vibrate?.(10);
   };
 
   const sortedCats = useMemo(() => sortedCategories(state.categories), [state.categories]);
@@ -73,8 +224,8 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
         .filter((e) => state.catalog[e.itemId].categoryId === cat.id)
         .map((e) => ({ e, it: state.catalog[e.itemId] }))
         .sort((a, b) => a.it.sortIndex - b.it.sortIndex);
-      const todo = rows.filter((r) => !r.e.isPurchased || held.has(r.e.itemId));
-      const got = rows.filter((r) => r.e.isPurchased && !held.has(r.e.itemId));
+      const todo = rows.filter((r) => !r.e.isPurchased || Boolean(heldPhases[r.e.itemId]));
+      const got = rows.filter((r) => r.e.isPurchased && !heldPhases[r.e.itemId]);
       return { cat, todo, got, total: rows.length };
     })
     .filter((s) => s.total > 0);
@@ -191,7 +342,7 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
   }
 
   return (
-    <main className="super-view">
+    <main className="super-view" ref={containerRef}>
       <div
         className={`super-progress-card ${isComplete ? 'super-progress-complete' : ''}`}
         aria-label={`נאספו ${done} מתוך ${total}`}
@@ -258,9 +409,18 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
         </aside>
       )}
 
-      {sections.map(({ cat, todo, total: catTotal, got }) =>
-        todo.length === 0 ? null : (
-          <section key={cat.id} id={`super-cat-${cat.id}`} className="super-category-card">
+      {sections.map(({ cat, todo, total: catTotal, got }) => {
+        if (todo.length === 0) return null;
+        const sectionLeaving = todo.every((r) => heldPhases[r.e.itemId] === 'leaving');
+        const catFlipId = `cat-${cat.id}`;
+        return (
+          <section
+            key={cat.id}
+            id={`super-cat-${cat.id}`}
+            data-flip-id={catFlipId}
+            data-flip-kind="cat"
+            className={`super-category-card${sectionLeaving ? ' super-category-leaving' : ''}`}
+          >
             <header className="super-category-header">
               <h2 className="super-category-title font-frank">{cat.name}</h2>
               <span className="super-category-count tabular-nums">
@@ -269,23 +429,33 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
             </header>
             <div className="super-rows-container">
               {todo.map(({ e, it }) => (
-                <SuperRow
+                <div
                   key={e.itemId}
-                  e={e}
-                  it={it}
-                  isNew={e.addedAt > enteredAt && e.addedByDevice !== me}
-                  isPassedDepartment={passedAlertMap.has(e.itemId)}
-                  onTap={tap}
-                />
+                  className="super-row-slot"
+                  data-flip-id={`row-${e.itemId}`}
+                  data-flip-kind="row"
+                  data-flip-parent={catFlipId}
+                >
+                  <SuperRow
+                    e={e}
+                    it={it}
+                    phase={heldPhases[e.itemId]}
+                    justArrived={justArrivedRef.current.has(e.itemId)}
+                    isNew={e.addedAt > enteredAt && e.addedByDevice !== me}
+                    isPassedDepartment={passedAlertMap.has(e.itemId)}
+                    onTap={tap}
+                  />
+                </div>
               ))}
             </div>
           </section>
-        )
-      )}
+        );
+      })}
 
       {collected.length > 0 && (
-        <section className="super-collected-module">
+        <section className="super-collected-module" data-flip-id="collected-module" data-flip-kind="cat">
           <button
+            ref={collectedToggleRef}
             type="button"
             className="super-collected-toggle"
             onClick={() => setShowDone((v) => !v)}
@@ -304,7 +474,14 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
             <div className="super-collected-panel">
               <div className="super-rows-container super-rows-collected">
                 {collected.map(({ e, it }) => (
-                  <SuperRow key={e.itemId} e={e} it={it} onTap={tap} />
+                  <SuperRow
+                    key={e.itemId}
+                    e={e}
+                    it={it}
+                    settled
+                    justArrived={justArrivedRef.current.has(e.itemId)}
+                    onTap={tap}
+                  />
                 ))}
               </div>
             </div>
@@ -325,12 +502,18 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
 function SuperRow({
   e,
   it,
+  phase,
+  settled,
+  justArrived,
   isNew,
   isPassedDepartment,
   onTap,
 }: {
   e: ListEntry;
   it: CatalogItem;
+  phase?: StrikePhase;
+  settled?: boolean;
+  justArrived?: boolean;
   isNew?: boolean;
   isPassedDepartment?: boolean;
   onTap: (id: string) => void;
@@ -341,11 +524,20 @@ function SuperRow({
   const [imgError, setImgError] = useState(false);
   const showImg = Boolean(packshot) && !imgError;
   const authorInitial = e.addedBy?.trim().charAt(0) || '';
+  const pencil = PENCIL_PATHS[getPencilVariant(e.itemId)];
 
   return (
     <button
       type="button"
-      className={`super-item-row ${e.isPurchased ? 'super-item-done' : ''}`}
+      className={[
+        'super-item-row',
+        e.isPurchased ? 'super-item-done' : '',
+        phase === 'leaving' ? 'super-item-leaving' : '',
+        settled ? 'super-item-settled' : '',
+        justArrived ? 'super-item-arriving' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       onClick={() => onTap(e.itemId)}
     >
       <span className="super-checkbox" aria-hidden="true">
@@ -401,6 +593,11 @@ function SuperRow({
           <span className="author-name">{e.addedBy}</span>
         </span>
       )}
+      <svg className="super-pencil-overlay" viewBox="0 0 320 60" preserveAspectRatio="none" aria-hidden="true">
+        <path className="super-pencil-smudge" d={pencil.main} pathLength={1} vectorEffect="non-scaling-stroke" />
+        <path className="super-pencil-main" d={pencil.main} pathLength={1} vectorEffect="non-scaling-stroke" />
+        <path className="super-pencil-grain" d={pencil.grain} pathLength={1} vectorEffect="non-scaling-stroke" />
+      </svg>
     </button>
   );
 }
