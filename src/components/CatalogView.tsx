@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import type { AppState, CatalogItem } from '../types';
 import { groupBySub, matches, normalize, sortedCategories } from '../lib/util';
 import { ItemCard } from './ItemCard';
+import { RollingNumber } from './ui';
 import { IconSearch, IconStar, IconCart, IconPlus, IconClose, IconCheck } from './Icons';
 
 type Filter = 'all' | 'core' | 'cart';
@@ -23,7 +24,9 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
   const [coreSnapshot, setCoreSnapshot] = useState<Set<string>>(new Set());
   const [cartSnapshot, setCartSnapshot] = useState<Set<string>>(new Set());
   const [activeCat, setActiveCat] = useState<string>('');
+  const [scrolledPastSearch, setScrolledPastSearch] = useState(false);
   const tabsRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const cats = useMemo(() => sortedCategories(state.categories), [state.categories]);
   const nq = normalize(query);
@@ -58,7 +61,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
     window.scrollTo({ top: 0 });
   };
 
-  // Scroll-spy for the category tabs.
+  // Scroll-spy for the category tabs + quick-search reveal.
   useEffect(() => {
     const onScroll = () => {
       const topH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--top-h')) || 0;
@@ -68,6 +71,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
         if (el && el.getBoundingClientRect().top - topH <= 8) current = s.cat.id;
       }
       setActiveCat(current);
+      setScrolledPastSearch(window.scrollY > 90);
     };
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -87,52 +91,39 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
     window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - topH + 2, behavior: 'smooth' });
   };
 
-  const presentCats = new Set(sections.map((s) => s.cat.id));
+  const focusSearchFromTop = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.setTimeout(() => searchInputRef.current?.focus(), 260);
+  };
 
-  const toolbar = (
-    <div className="bento-toolbar">
-      <div className="search-row">
-        <div className="search-box">
-          <span className="search-icon" aria-hidden>
-            <IconSearch className="w-4 h-4 text-slate-400" />
-          </span>
-          <input
-            type="search"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="מה חסר בבית? חפשו או הוסיפו…"
-            enterKeyHint="search"
-            aria-label="חיפוש מוצר"
-          />
-          {query && (
-            <button type="button" className="search-clear" onClick={() => setQuery('')} aria-label="נקה חיפוש">
-              <IconClose className="w-4 h-4" />
-            </button>
-          )}
-        </div>
-      </div>
-      <div className="chips">
-        <button
-          type="button"
-          className={`bento-chip ${filter === 'core' ? 'bento-chip-core' : ''}`}
-          onClick={() => setMode('core')}
-        >
-          <IconStar className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-          <span>הקבועים שלנו</span>
-        </button>
-        <button
-          type="button"
-          className={`bento-chip ${filter === 'cart' ? 'bento-chip-cart' : ''}`}
-          onClick={() => setMode('cart')}
-        >
-          <IconCart className="w-3.5 h-3.5" />
-          <span>ברשימה</span>
-          <span className="bento-chip-badge tabular-nums">{cartCount}</span>
-        </button>
-      </div>
+  const presentCats = useMemo(() => new Set(sections.map((s) => s.cat.id)), [sections]);
+
+  const catCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const e of Object.values(state.list)) {
+      const cid = state.catalog[e.itemId]?.categoryId;
+      if (cid) counts[cid] = (counts[cid] || 0) + 1;
+    }
+    return counts;
+  }, [state.list, state.catalog]);
+
+  // Only the slim horizontal category rail + quick-search icon stay sticky in the top header
+  const stickyTabsBar = (
+    <div className="cat-tabs-bar">
+      <button
+        type="button"
+        className={`cat-quick-search ${scrolledPastSearch ? 'is-visible' : ''}`}
+        tabIndex={scrolledPastSearch ? 0 : -1}
+        aria-hidden={!scrolledPastSearch}
+        onClick={focusSearchFromTop}
+        aria-label="חזרה לחיפוש"
+        title="חיפוש מהיר"
+      >
+        <IconSearch className="w-4 h-4" />
+      </button>
       <div className="cat-tabs" ref={tabsRef} role="tablist" aria-label="ניווט מחלקות">
         {cats.map((c) => {
-          const countInCat = Object.values(state.list).filter((e) => state.catalog[e.itemId]?.categoryId === c.id).length;
+          const countInCat = catCounts[c.id] || 0;
           return (
             <button
               key={c.id}
@@ -147,7 +138,9 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
             >
               <span className="bento-tab-label">{c.name}</span>
               {countInCat > 0 && (
-                <span className="bento-tab-count tabular-nums">{countInCat}</span>
+                <span className="bento-tab-count">
+                  <RollingNumber value={countInCat} />
+                </span>
               )}
             </button>
           );
@@ -158,9 +151,54 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
 
   return (
     <>
-      {toolbarSlot && createPortal(toolbar, toolbarSlot)}
+      {toolbarSlot && createPortal(stickyTabsBar, toolbarSlot)}
 
       <main className="bento-catalog">
+        <div className="catalog-discovery-bar">
+          <div className="search-row">
+            <div className="search-box">
+              <span className="search-icon" aria-hidden>
+                <IconSearch className="w-4 h-4" />
+              </span>
+              <input
+                ref={searchInputRef}
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="מה חסר בבית? חפשו או הוסיפו…"
+                enterKeyHint="search"
+                aria-label="חיפוש מוצר"
+              />
+              {query && (
+                <button type="button" className="search-clear" onClick={() => setQuery('')} aria-label="נקה חיפוש">
+                  <IconClose className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+          <div className="chips">
+            <button
+              type="button"
+              className={`bento-chip ${filter === 'core' ? 'bento-chip-core' : ''}`}
+              onClick={() => setMode('core')}
+            >
+              <IconStar className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+              <span>הקבועים שלנו</span>
+            </button>
+            <button
+              type="button"
+              className={`bento-chip ${filter === 'cart' ? 'bento-chip-cart' : ''}`}
+              onClick={() => setMode('cart')}
+            >
+              <IconCart className="w-3.5 h-3.5" />
+              <span>ברשימה</span>
+              <span className="bento-chip-badge">
+                <RollingNumber value={cartCount} />
+              </span>
+            </button>
+          </div>
+        </div>
+
         {nq && !exactExists && (
           <button type="button" className="bento-add-tile" onClick={() => onAddNew(query.trim())}>
             <span className="bento-add-icon">
@@ -177,7 +215,7 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
             <span className="bento-empty-icon text-emerald-500">
               <IconCheck className="w-8 h-8 mx-auto" />
             </span>
-            <p>כל המוצרים הקבועים כבר ברשימה 👍</p>
+            <p>כל המוצרים הקבועים כבר ברשימה</p>
           </div>
         )}
         {filter === 'cart' && sections.length === 0 && (
@@ -197,37 +235,45 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
           </div>
         )}
 
-        {sections.map(({ cat, groups }) => (
-          <section key={cat.id} id={`cat-${cat.id}`} className="bento-section">
-            <header className="bento-section-header">
-              <h2 className="bento-section-title">{cat.name}</h2>
-            </header>
+        {sections.map(({ cat, groups }) => {
+          const inCatCount = catCounts[cat.id] || 0;
+          const sectionTotal = groups.reduce((acc, [, its]) => acc + its.length, 0);
+          return (
+            <section key={cat.id} id={`cat-${cat.id}`} className="bento-section">
+              <header className="bento-section-header">
+                <h2 className="bento-section-title">{cat.name}</h2>
+                <span className="bento-section-rule" aria-hidden="true" />
+                <span className={`bento-section-meta tabular-nums ${inCatCount > 0 ? 'is-active' : ''}`}>
+                  {inCatCount > 0 ? `${inCatCount} בסל` : `${sectionTotal}`}
+                </span>
+              </header>
 
-            {groups.map(([sub, its]) => (
-              <div key={sub} className="bento-module">
-                {groups.length > 1 && (
-                  <h3 className="bento-module-title">
-                    <span className="bento-module-bullet" aria-hidden />
-                    {sub}
-                  </h3>
-                )}
-                <div className="bento-grid">
-                  {its.map((it) => (
-                    <ItemCard
-                      key={it.id}
-                      item={it}
-                      entry={state.list[it.id]}
-                      onToggle={onToggle}
-                      onQty={onQty}
-                      onNote={onNote}
-                      onEdit={onEdit}
-                    />
-                  ))}
+              {groups.map(([sub, its]) => (
+                <div key={sub} className="bento-module">
+                  {groups.length > 1 && (
+                    <h3 className="bento-module-title">
+                      <span className="bento-module-bullet" aria-hidden />
+                      {sub}
+                    </h3>
+                  )}
+                  <div className="bento-grid">
+                    {its.map((it) => (
+                      <ItemCard
+                        key={it.id}
+                        item={it}
+                        entry={state.list[it.id]}
+                        onToggle={onToggle}
+                        onQty={onQty}
+                        onNote={onNote}
+                        onEdit={onEdit}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </section>
-        ))}
+              ))}
+            </section>
+          );
+        })}
         <p className="bento-footer-hint">טיפ: לחיצה ארוכה על מוצר תאפשר לערוך או למחוק אותו</p>
       </main>
     </>

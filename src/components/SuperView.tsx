@@ -1,8 +1,21 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { AppState, CatalogItem, ListEntry } from '../types';
 import { formatQty, getDeviceId, playAlertChime, sortedCategories } from '../lib/util';
 import { getProductPackshot, getItemEmoji } from '../lib/productImages';
-import { IconCart, IconHome, IconNote, IconCheck } from './Icons';
+import { RollingNumber } from './ui';
+import {
+  IconAlertTriangle,
+  IconBagCheck,
+  IconBell,
+  IconCart,
+  IconCheck,
+  IconChevronDown,
+  IconClose,
+  IconHome,
+  IconMapPin,
+  IconNote,
+  IconSparkles,
+} from './Icons';
 
 interface Props {
   state: AppState;
@@ -17,7 +30,6 @@ interface PassedAlertItem {
   itemName: string;
   categoryId: string;
   categoryName: string;
-  categoryIcon: string;
   addedBy?: string;
   addedAt: number;
 }
@@ -104,7 +116,6 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
               itemName: it.name,
               categoryId: it.categoryId,
               categoryName: cat?.name || 'מחלקה קודמת',
-              categoryIcon: cat?.icon || '🛒',
               addedBy: entry.addedBy,
               addedAt: entry.addedAt,
             });
@@ -157,9 +168,9 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
   };
 
   const passedAlertMap = useMemo(() => new Set(passedAlerts.map((a) => a.itemId)), [passedAlerts]);
-
   const collected = sections.flatMap((s) => s.got);
-  const pct = total ? Math.round((done / total) * 100) : 0;
+  const progressRatio = total ? done / total : 0;
+  const isComplete = total > 0 && done === total;
 
   if (total === 0) {
     return (
@@ -181,16 +192,28 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
 
   return (
     <main className="super-view">
-      <div className="super-progress-card" aria-label={`נאספו ${done} מתוך ${total}`}>
+      <div
+        className={`super-progress-card ${isComplete ? 'super-progress-complete' : ''}`}
+        aria-label={`נאספו ${done} מתוך ${total}`}
+      >
         <div className="super-progress-info">
           <span className="super-progress-label">בעגלה</span>
           <span className="super-progress-numbers tabular-nums">
-            <b>{done}</b> מתוך <b>{total}</b>
-            {done === total && ' 🎉'}
+            <b>
+              <RollingNumber value={done} />
+            </b>{' '}
+            מתוך{' '}
+            <b>
+              <RollingNumber value={total} />
+            </b>
+            {isComplete && <IconSparkles className="super-complete-sparkle" aria-hidden="true" />}
           </span>
         </div>
         <div className="super-progress-track">
-          <div className="super-progress-bar" style={{ width: `${pct}%` }} />
+          <div
+            className="super-progress-bar"
+            style={{ '--progress': progressRatio } as CSSProperties}
+          />
         </div>
       </div>
 
@@ -199,12 +222,12 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
           {passedAlerts.map((alert) => (
             <div key={alert.itemId} className="super-alert-banner">
               <div className="super-alert-icon-wrap" aria-hidden="true">
-                ⚠️
+                <IconAlertTriangle className="w-5 h-5" />
               </div>
               <div className="super-alert-content">
                 <span className="super-alert-badge">מחלקה שכבר עברת</span>
                 <p className="super-alert-text">
-                  נוסף: <strong>{alert.itemName}</strong> ({alert.categoryIcon} {alert.categoryName})
+                  נוסף: <strong>{alert.itemName}</strong> ({alert.categoryName})
                 </p>
                 {alert.addedBy && (
                   <div className="super-alert-author">
@@ -218,7 +241,8 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
                   className="super-alert-btn-jump"
                   onClick={() => scrollToCategory(alert.categoryId)}
                 >
-                  קפוץ למחלקה 📍
+                  <IconMapPin className="w-3.5 h-3.5" />
+                  <span>קפוץ למחלקה</span>
                 </button>
                 <button
                   type="button"
@@ -226,7 +250,7 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
                   onClick={() => dismissAlert(alert.itemId)}
                   aria-label="סגירת התראה"
                 >
-                  ✕
+                  <IconClose className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -240,7 +264,7 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
             <header className="super-category-header">
               <h2 className="super-category-title font-frank">{cat.name}</h2>
               <span className="super-category-count tabular-nums">
-                {got.length}/{catTotal}
+                <RollingNumber value={got.length} />/{catTotal}
               </span>
             </header>
             <div className="super-rows-container">
@@ -268,18 +292,21 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
             aria-expanded={showDone}
           >
             <span className="super-collected-title">
-              <IconCheck className="inline-block w-4 h-4 text-emerald-500 me-1" />
-              כבר בעגלה (<span className="tabular-nums">{collected.length}</span>)
+              <IconCheck className="inline-block w-4 h-4 text-emerald-600 me-1.5" />
+              כבר בעגלה (<RollingNumber value={collected.length} />)
             </span>
-            <span className="super-collected-chevron" aria-hidden>
-              {showDone ? '▲' : '▼'}
-            </span>
+            <IconChevronDown
+              className={`super-collected-chevron-svg ${showDone ? 'is-open' : ''}`}
+              aria-hidden="true"
+            />
           </button>
           {showDone && (
-            <div className="super-rows-container super-rows-collected">
-              {collected.map(({ e, it }) => (
-                <SuperRow key={e.itemId} e={e} it={it} onTap={tap} />
-              ))}
+            <div className="super-collected-panel">
+              <div className="super-rows-container super-rows-collected">
+                {collected.map(({ e, it }) => (
+                  <SuperRow key={e.itemId} e={e} it={it} onTap={tap} />
+                ))}
+              </div>
             </div>
           )}
         </section>
@@ -287,7 +314,8 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
 
       <div className="super-floating-bar">
         <button type="button" className="bento-btn-primary super-btn-checkout flex items-center justify-center gap-2" onClick={onCheckout}>
-          <span>סיימנו קנייה 💳</span>
+          <IconBagCheck className="w-5 h-5" />
+          <span>סיימנו קנייה</span>
         </button>
       </div>
     </main>
@@ -312,6 +340,7 @@ function SuperRow({
   const [imgLoaded, setImgLoaded] = useState(false);
   const [imgError, setImgError] = useState(false);
   const showImg = Boolean(packshot) && !imgError;
+  const authorInitial = e.addedBy?.trim().charAt(0) || '';
 
   return (
     <button
@@ -319,22 +348,23 @@ function SuperRow({
       className={`super-item-row ${e.isPurchased ? 'super-item-done' : ''}`}
       onClick={() => onTap(e.itemId)}
     >
-      <span className="super-checkbox" aria-hidden>
-        {e.isPurchased ? <IconCheck className="w-3.5 h-3.5 text-white" /> : null}
+      <span className="super-checkbox" aria-hidden="true">
+        <IconCheck className="super-check-svg" />
       </span>
       <div className="super-item-thumb">
-        {(!showImg || !imgLoaded) && (
-          <span className="super-item-placeholder" aria-hidden>
+        {showImg && !imgLoaded && <span className="packshot-shimmer" aria-hidden="true" />}
+        {!showImg && (
+          <span className="super-item-placeholder" aria-hidden="true">
             {emoji}
           </span>
         )}
         {showImg && (
-          <img 
-            src={packshot!} 
-            alt={it.name} 
-            loading="lazy" 
+          <img
+            src={packshot!}
+            alt={it.name}
+            loading="lazy"
             decoding="async"
-            className={`super-item-img ${imgLoaded ? 'super-item-img-loaded' : 'super-item-img-loading'}`} 
+            className={`super-item-img ${imgLoaded ? 'super-item-img-loaded' : 'super-item-img-loading'}`}
             onLoad={() => setImgLoaded(true)}
             onError={() => setImgError(true)}
           />
@@ -342,13 +372,19 @@ function SuperRow({
       </div>
       <div className="super-item-content">
         <div className="super-item-title-row">
-          <span className="super-item-name font-frank">{it.name}</span>
+          <span className="super-item-name font-frank">
+            <span className="super-item-name-text">{it.name}</span>
+          </span>
           {isPassedDepartment ? (
             <span className="super-badge-passed" title="המוצר נוסף אחרי שכבר עברת את המחלקה הזו">
-              ⚠️ נוסף אחרי שעברת!
+              <IconAlertTriangle className="w-3 h-3 shrink-0" />
+              <span>נוסף אחרי שעברת</span>
             </span>
           ) : isNew ? (
-            <span className="super-badge-new">נוסף מהבית 🔔</span>
+            <span className="super-badge-new">
+              <IconBell className="w-3 h-3 shrink-0" />
+              <span>נוסף מהבית</span>
+            </span>
           ) : null}
         </div>
         {e.notes && (
@@ -360,8 +396,9 @@ function SuperRow({
       </div>
       <span className="super-item-qty tabular-nums">{formatQty(e.qty, it.defaultUnit)}</span>
       {e.addedBy && (
-        <span className="super-item-author-tag" title={`נוסף ע"י ${e.addedBy}`}>
-          👤 {e.addedBy}
+        <span className="author-chip" title={`נוסף ע"י ${e.addedBy}`}>
+          <span className="author-avatar">{authorInitial}</span>
+          <span className="author-name">{e.addedBy}</span>
         </span>
       )}
     </button>

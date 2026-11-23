@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { CatalogView } from './components/CatalogView';
 import { AddItemSheet, CheckoutSheet, EditItemSheet, NoteSheet, SettingsSheet, ShareSheet } from './components/Sheets';
 import { SuperView } from './components/SuperView';
-import { Toast, type ToastData } from './components/ui';
+import { RollingNumber, Toast, type ToastData } from './components/ui';
 import { getPendingInviteFromUrl, haptic, resolveFamilyId } from './lib/util';
 import { useStore } from './lib/useStore';
 import type { CatalogItem, ListEntry } from './types';
@@ -43,26 +44,6 @@ export default function App() {
     return () => ro.disconnect();
   }, []);
 
-  // Parallax: grid and paper drift at 35% scroll speed directly on body (preserving blend modes)
-  useEffect(() => {
-    let ticking = false;
-    const onScroll = () => {
-      if (!ticking) {
-        window.requestAnimationFrame(() => {
-          const offset = (window.scrollY * 0.35) % 384;
-          document.body.style.backgroundPositionY = `${offset}px`;
-          ticking = false;
-        });
-        ticking = true;
-      }
-    };
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => {
-      window.removeEventListener('scroll', onScroll);
-      document.body.style.backgroundPositionY = '';
-    };
-  }, []);
-
   const showToast = useCallback((text: string, undo?: () => void) => {
     setToast({ id: Date.now(), text, onAction: undo, actionLabel: undo ? 'בטל ↩' : undefined });
   }, []);
@@ -77,8 +58,18 @@ export default function App() {
       setEnteredAt(now);
     }
     localStorage.setItem('fs:mode', m);
-    setModeRaw(m);
-    window.scrollTo({ top: 0 });
+
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown };
+    if (!reduced && typeof doc.startViewTransition === 'function') {
+      doc.startViewTransition(() => {
+        flushSync(() => setModeRaw(m));
+        window.scrollTo({ top: 0 });
+      });
+    } else {
+      setModeRaw(m);
+      window.scrollTo({ top: 0 });
+    }
   };
 
   const undoRemove = useCallback(
@@ -141,15 +132,24 @@ export default function App() {
             <img src={fridgeSolo} alt="אין כלום בבית" className="topbar-fridge-icon" />
           </button>
           <div className="mode-toggle" role="tablist">
+            <span className="mode-toggle-indicator" data-mode={mode} aria-hidden="true" />
             <button role="tab" aria-selected={mode === 'home'} className={mode === 'home' ? 'on' : ''} onClick={() => setMode('home')}>
               <IconHome className="mode-icon" />
               <span>בבית</span>
-              {inList > 0 && <span className="mode-count">{inList}</span>}
+              {inList > 0 && (
+                <span className="mode-count">
+                  <RollingNumber value={inList} />
+                </span>
+              )}
             </button>
             <button role="tab" aria-selected={mode === 'super'} className={mode === 'super' ? 'on' : ''} onClick={() => setMode('super')}>
               <IconCart className="mode-icon" />
               <span>בסופר</span>
-              {remaining > 0 && <span className="mode-count">{remaining}</span>}
+              {remaining > 0 && (
+                <span className="mode-count">
+                  <RollingNumber value={remaining} />
+                </span>
+              )}
             </button>
           </div>
           <button className="icon-btn top-icon" onClick={() => setSheet({ kind: 'share' })} aria-label="שיתוף והזמנה">
@@ -163,31 +163,33 @@ export default function App() {
         {mode === 'home' && <div ref={setSlot} />}
       </header>
 
-      {!state.ready ? (
-        <div className="app-splash-loading">
-          <img src={fridgeBadge} alt="אין כלום בבית" className="splash-fridge-icon" />
-          <div className="splash-title">אין כלום בבית</div>
-          <div className="splash-sub">רגע, בודקים מה חסר…</div>
-        </div>
-      ) : mode === 'home' ? (
-        <CatalogView
-          state={state}
-          toolbarSlot={slot}
-          onToggle={onToggle}
-          onQty={onQty}
-          onNote={onNote}
-          onEdit={onEdit}
-          onAddNew={onAddNew}
-        />
-      ) : (
-        <SuperView
-          state={state}
-          enteredAt={enteredAt}
-          onTogglePurchased={onTogglePurchased}
-          onCheckout={() => setSheet({ kind: 'checkout' })}
-          onGoHome={() => setMode('home')}
-        />
-      )}
+      <div className="app-main-stage">
+        {!state.ready ? (
+          <div className="app-splash-loading">
+            <img src={fridgeBadge} alt="אין כלום בבית" className="splash-fridge-icon" />
+            <div className="splash-title">אין כלום בבית</div>
+            <div className="splash-sub">רגע, בודקים מה חסר…</div>
+          </div>
+        ) : mode === 'home' ? (
+          <CatalogView
+            state={state}
+            toolbarSlot={slot}
+            onToggle={onToggle}
+            onQty={onQty}
+            onNote={onNote}
+            onEdit={onEdit}
+            onAddNew={onAddNew}
+          />
+        ) : (
+          <SuperView
+            state={state}
+            enteredAt={enteredAt}
+            onTogglePurchased={onTogglePurchased}
+            onCheckout={() => setSheet({ kind: 'checkout' })}
+            onGoHome={() => setMode('home')}
+          />
+        )}
+      </div>
 
       {sheet?.kind === 'add' && (
         <AddItemSheet
