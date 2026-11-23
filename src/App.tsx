@@ -128,6 +128,13 @@ export default function App() {
     return () => window.removeEventListener('scroll', onScroll);
   }, [mode]);
 
+  useEffect(() => {
+    document.body.dataset.mode = mode;
+    return () => {
+      delete document.body.dataset.mode;
+    };
+  }, [mode]);
+
   const onProgrammaticScroll = useCallback((collapse: boolean) => {
     ignoreScrollUntilRef.current = performance.now() + 450;
     setHeaderCollapsed(collapse);

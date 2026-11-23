@@ -43,7 +43,7 @@ export function AddItemSheet({
         <div className="unit-row">
           <div className="seg">
             {UNITS.slice(0, 5).map((u) => (
-              <button key={u} className={`seg-btn ${unit === u ? 'seg-on' : ''}`} onClick={() => setUnit(u)}>
+              <button type="button" key={u} className={`seg-btn ${unit === u ? 'seg-on' : ''}`} onClick={() => setUnit(u)}>
                 {u}
               </button>
             ))}
@@ -65,6 +65,7 @@ export function AddItemSheet({
         <div className="cat-pick">
           {sortedCategories(categories).map((c) => (
             <button
+              type="button"
               key={c.id}
               className="cat-pick-btn"
               disabled={!name.trim()}
@@ -113,6 +114,7 @@ export function EditItemSheet({
         <div className="cat-pick compact">
           {sortedCategories(state.categories).map((c) => (
             <button
+              type="button"
               key={c.id}
               className={`cat-pick-btn ${draft.categoryId === c.id ? 'cat-pick-on' : ''}`}
               onClick={() => set('categoryId', c.id)}
@@ -137,7 +139,7 @@ export function EditItemSheet({
         <div className="unit-row">
           <div className="seg">
             {units.map((u) => (
-              <button key={u} className={`seg-btn ${draft.defaultUnit === u ? 'seg-on' : ''}`} onClick={() => set('defaultUnit', u)}>
+              <button type="button" key={u} className={`seg-btn ${draft.defaultUnit === u ? 'seg-on' : ''}`} onClick={() => set('defaultUnit', u)}>
                 {u}
               </button>
             ))}
@@ -161,6 +163,7 @@ export function EditItemSheet({
 
       <div className="sheet-actions">
         <button
+          type="button"
           className="btn-primary"
           disabled={!draft.name.trim()}
           onClick={() => onSave({ ...draft, name: draft.name.trim(), subCategory: draft.subCategory.trim() || 'אחר' })}
@@ -168,11 +171,11 @@ export function EditItemSheet({
           שמור
         </button>
         {!confirmDel ? (
-          <button className="btn-danger-ghost" onClick={() => setConfirmDel(true)}>
+          <button type="button" className="btn-danger-ghost" onClick={() => setConfirmDel(true)}>
             🗑️ מחק מהמאגר
           </button>
         ) : (
-          <button className="btn-danger" onClick={() => onDelete(item.id)}>
+          <button type="button" className="btn-danger" onClick={() => onDelete(item.id)}>
             בטוח שרוצים למחוק?
           </button>
         )}
@@ -205,11 +208,11 @@ export function NoteSheet({
         onChange={(e) => setText(e.target.value)}
       />
       <div className="sheet-actions">
-        <button className="btn-primary" onClick={() => onSave(text)}>
+        <button type="button" className="btn-primary" onClick={() => onSave(text)}>
           שמור
         </button>
         {initial && (
-          <button className="btn-ghost" onClick={() => onSave('')}>
+          <button type="button" className="btn-ghost" onClick={() => onSave('')}>
             מחק הערה
           </button>
         )}
@@ -240,10 +243,10 @@ export function CheckoutSheet({
             להשאיר אותם לפעם הבאה?
           </p>
           <div className="sheet-actions">
-            <button className="btn-primary" onClick={onKeep}>
+            <button type="button" className="btn-primary" onClick={onKeep}>
               להשאיר לפעם הבאה
             </button>
-            <button className="btn-danger-ghost" onClick={onResetAll}>
+            <button type="button" className="btn-danger-ghost" onClick={onResetAll}>
               למחוק הכל מהרשימה
             </button>
           </div>
@@ -252,7 +255,7 @@ export function CheckoutSheet({
         <>
           <p className="dialog-text">אספנו הכל! 🎉 מאפסים את הרשימה לקראת הפעם הבאה?</p>
           <div className="sheet-actions">
-            <button className="btn-primary" onClick={onResetAll}>
+            <button type="button" className="btn-primary" onClick={onResetAll}>
               איפוס רשימה
             </button>
           </div>
@@ -420,10 +423,10 @@ export function SettingsSheet({
               <span className="order-name">
                 {c.icon} {c.name}
               </span>
-              <button className="icon-btn" disabled={i === 0} onClick={() => move(i, -1)} aria-label="למעלה">
+              <button type="button" className="icon-btn" disabled={i === 0} onClick={() => move(i, -1)} aria-label="למעלה">
                 ▲
               </button>
-              <button className="icon-btn" disabled={i === cats.length - 1} onClick={() => move(i, 1)} aria-label="למטה">
+              <button type="button" className="icon-btn" disabled={i === cats.length - 1} onClick={() => move(i, 1)} aria-label="למטה">
                 ▼
               </button>
             </li>

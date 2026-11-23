@@ -1,4 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { createPortal } from 'react-dom';
 import type { AppState, CatalogItem, ListEntry } from '../types';
 import { formatQty, getDeviceId, playAlertChime, sortedCategories } from '../lib/util';
 import { getProductPackshot, getItemEmoji } from '../lib/productImages';
@@ -489,12 +490,15 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
         </section>
       )}
 
-      <div className="super-floating-bar">
-        <button type="button" className="bento-btn-primary super-btn-checkout flex items-center justify-center gap-2" onClick={onCheckout}>
-          <IconBagCheck className="w-5 h-5" />
-          <span>סיימנו קנייה</span>
-        </button>
-      </div>
+      {createPortal(
+        <div className="super-floating-bar">
+          <button type="button" className="bento-btn-primary super-btn-checkout flex items-center justify-center gap-2" onClick={onCheckout}>
+            <IconBagCheck className="w-5 h-5" />
+            <span>סיימנו קנייה</span>
+          </button>
+        </div>,
+        document.body
+      )}
     </main>
   );
 }

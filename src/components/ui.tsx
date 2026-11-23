@@ -44,6 +44,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     watching: false,
     engaged: false,
     fromHeader: false,
+    pointerId: -1,
     startX: 0,
     startY: 0,
     lastY: 0,
@@ -91,6 +92,7 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
       watching: true,
       engaged: fromHeader,
       fromHeader,
+      pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
       lastY: e.clientY,
@@ -100,6 +102,11 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     };
     if (fromHeader) {
       sheetRef.current?.classList.add('sheet-dragging');
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore synthetic events */
+      }
     }
   };
 
@@ -119,6 +126,11 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
         d.engaged = true;
         d.startY = e.clientY;
         sheetRef.current?.classList.add('sheet-dragging');
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore synthetic events */
+        }
       } else {
         return;
       }
@@ -143,10 +155,18 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     const d = drag.current;
     if (!d.watching) return;
     const wasEngaged = d.engaged;
-    const { dy, vy } = d;
+    const { dy, vy, pointerId } = d;
     d.watching = false;
     d.engaged = false;
+    d.pointerId = -1;
     sheetRef.current?.classList.remove('sheet-dragging');
+    try {
+      if (pointerId >= 0 && sheetRef.current?.hasPointerCapture?.(pointerId)) {
+        sheetRef.current.releasePointerCapture(pointerId);
+      }
+    } catch {
+      /* ignore */
+    }
 
     if (!wasEngaged) return;
     if (dy > 110 || (vy > 0.45 && dy > 24)) {
