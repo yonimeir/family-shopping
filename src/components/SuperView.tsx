@@ -46,16 +46,16 @@ interface FlipSnapshotItem {
 
 const PENCIL_PATHS = [
   {
-    main: 'M 276 34 C 238 30, 198 33, 156 29 C 114 25, 62 30, 13 26',
-    grain: 'M 271 31 C 228 34, 184 28, 138 32 C 94 35, 52 27, 17 29',
+    main: 'M 274 40 C 236 35, 194 37, 150 30 C 106 23, 58 27, 14 20',
+    grain: 'M 269 36 C 226 39, 180 30, 134 32 C 90 34, 48 22, 18 24',
   },
   {
-    main: 'M 276 26 C 232 29, 190 25, 148 31 C 106 36, 58 31, 13 35',
-    grain: 'M 271 29 C 226 26, 182 32, 136 29 C 92 26, 48 34, 18 32',
+    main: 'M 275 21 C 232 26, 188 23, 144 31 C 100 39, 54 33, 14 40',
+    grain: 'M 268 25 C 222 22, 176 32, 130 29 C 86 27, 46 38, 19 36',
   },
   {
-    main: 'M 275 35 C 238 33, 196 28, 152 28 C 108 28, 60 32, 13 27',
-    grain: 'M 269 32 C 224 29, 178 33, 130 30 C 86 27, 46 31, 17 30',
+    main: 'M 274 38 C 238 30, 200 35, 158 28 C 116 21, 68 33, 14 23',
+    grain: 'M 268 34 C 226 37, 184 26, 140 31 C 96 36, 54 25, 18 28',
   },
 ] as const;
 
@@ -594,9 +594,9 @@ function SuperRow({
         </span>
       )}
       <svg className="super-pencil-overlay" viewBox="0 0 320 60" preserveAspectRatio="none" aria-hidden="true">
-        <path className="super-pencil-smudge" d={pencil.main} pathLength={1} vectorEffect="non-scaling-stroke" />
-        <path className="super-pencil-main" d={pencil.main} pathLength={1} vectorEffect="non-scaling-stroke" />
-        <path className="super-pencil-grain" d={pencil.grain} pathLength={1} vectorEffect="non-scaling-stroke" />
+        <path className="super-pencil-smudge" d={pencil.main} pathLength={100} vectorEffect="non-scaling-stroke" />
+        <path className="super-pencil-main" d={pencil.main} pathLength={100} vectorEffect="non-scaling-stroke" />
+        <path className="super-pencil-grain" d={pencil.grain} pathLength={100} vectorEffect="non-scaling-stroke" />
       </svg>
     </button>
   );

@@ -9,4 +9,4 @@ export const firebaseConfig = {
   appId: (env.VITE_FIREBASE_APP_ID as string | undefined) || '1:826189234717:web:25b8737ca8d37162043cf4',
 };
 
-export const isFirebaseConfigured = Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);
+export const isFirebaseConfigured = env.VITE_LOCAL_ONLY !== 'true' && Boolean(firebaseConfig.apiKey && firebaseConfig.projectId);

@@ -958,6 +958,44 @@ html.is-mode-transitioning .topbar {
   padding-block: 0 calc(110px + env(safe-area-inset-bottom));
   padding-inline: 14px;
 }
+.super-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding-block: 56px 40px;
+  padding-inline: 20px;
+  gap: 10px;
+}
+.super-empty-icon {
+  width: 68px;
+  height: 68px;
+  border-radius: 20px;
+  background: oklch(0.994 0.004 80 / 0.65);
+  border: 1px solid var(--border-hairline);
+  box-shadow: var(--card-shadow);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-hint);
+  margin-block-end: 4px;
+}
+.super-empty-title {
+  margin: 0;
+  font-family: var(--font-headline);
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text-main);
+}
+.super-empty-desc {
+  margin: 0;
+  margin-block-end: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-muted);
+  max-width: 28ch;
+}
 .super-progress-card {
   position: sticky;
   inset-block-start: calc(var(--top-h, 62px) + 8px);
@@ -1151,7 +1189,6 @@ html.is-mode-transitioning .topbar {
 }
 .super-item-img-loaded {
   opacity: 1;
-  transform: scale(1);
   transition: opacity 220ms ease;
 }
 .super-item-content {
@@ -1186,6 +1223,12 @@ html.is-mode-transitioning .topbar {
   height: 100%;
   pointer-events: none;
   z-index: 3;
+  opacity: 0;
+  transition: opacity 70ms ease;
+}
+.super-item-done .super-pencil-overlay,
+.super-item-settled .super-pencil-overlay {
+  opacity: 1;
 }
 .super-pencil-smudge,
 .super-pencil-main,
@@ -1193,8 +1236,8 @@ html.is-mode-transitioning .topbar {
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
-  stroke-dasharray: 1;
-  stroke-dashoffset: 1;
+  stroke-dasharray: 108 240;
+  stroke-dashoffset: 108;
 }
 .super-pencil-smudge {
   stroke: oklch(0.30 0.014 245 / 0.14);
@@ -1202,13 +1245,13 @@ html.is-mode-transitioning .topbar {
   transition: stroke-dashoffset 250ms cubic-bezier(0.22, 1, 0.36, 1) 40ms;
 }
 .super-pencil-main {
-  stroke: oklch(0.28 0.015 250 / 0.80);
-  stroke-width: 2.5px;
+  stroke: oklch(0.27 0.015 250 / 0.84);
+  stroke-width: 2.7px;
   transition: stroke-dashoffset 240ms cubic-bezier(0.22, 1, 0.36, 1) 25ms;
 }
 .super-pencil-grain {
-  stroke: oklch(0.42 0.014 85 / 0.46);
-  stroke-width: 1.35px;
+  stroke: oklch(0.38 0.014 85 / 0.52);
+  stroke-width: 1.45px;
   transition: stroke-dashoffset 220ms cubic-bezier(0.22, 1, 0.36, 1) 70ms;
 }
 .super-item-done .super-pencil-smudge,
@@ -1444,9 +1487,8 @@ html.is-mode-transitioning .topbar {
   transition: opacity 200ms ease;
 }
 .super-item-done .super-item-img {
-  opacity: 0.55;
-  filter: saturate(0.42);
-  transition: opacity 200ms ease, filter 200ms ease;
+  opacity: 0.54;
+  transition: opacity 200ms ease;
 }
 .super-item-done .super-checkbox {
   background: var(--brand-emerald);
@@ -1460,7 +1502,7 @@ html.is-mode-transitioning .topbar {
   transition: transform 230ms var(--ease-out-quint), opacity 200ms ease;
 }
 .super-item-arriving {
-  animation: super-row-arrive 220ms var(--ease-out-quint) both;
+  animation: super-row-arrive 220ms var(--ease-out-quint) backwards;
 }
 @keyframes super-row-arrive {
   from { opacity: 0; transform: translateY(-8px) scale(0.98); }
@@ -1469,7 +1511,7 @@ html.is-mode-transitioning .topbar {
 
 .super-collected-module {
   margin-block-start: 22px;
-  animation: super-row-arrive 240ms var(--ease-out-quint) both;
+  animation: super-row-arrive 240ms var(--ease-out-quint) backwards;
 }
 .super-collected-toggle {
   width: 100%;
@@ -1496,7 +1538,7 @@ html.is-mode-transitioning .topbar {
   transform: rotate(180deg);
 }
 .super-collected-panel {
-  animation: panel-reveal 190ms var(--ease-out-quint) both;
+  animation: panel-reveal 190ms var(--ease-out-quint) backwards;
 }
 @keyframes panel-reveal {
   from { opacity: 0; transform: translateY(-6px); }
