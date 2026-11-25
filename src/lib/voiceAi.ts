@@ -61,7 +61,7 @@ export const PROVIDER_META: Record<AiProvider, ProviderMeta> = {
     id: 'gemini',
     label: 'Google Gemini',
     shortLabel: 'Gemini',
-    modelLabel: 'gemini-4-hydrogen',
+    modelLabel: 'gemini-4-hydrogen (גיבוי אוטומטי)',
     docsUrl: 'https://aistudio.google.com/apikey',
     docsLabel: 'קבלת מפתח חינמי ב־Google AI Studio',
     placeholder: 'AIza...',
@@ -377,6 +377,9 @@ function formatHttpError(provider: AiProvider, status: number, bodyText: string)
   if (status === 429) {
     return new Error(`חריגת מכסה ב־${label} (429). נסו שוב בעוד כמה שניות או החליפו ספק בהגדרות.`);
   }
+  if (status === 503 || status === 502 || status === 504) {
+    return new Error(`שרתי ${label} עמוסים כרגע (${status}). ניסינו גם מודלים חלופיים — נסו שוב בעוד כמה שניות.`);
+  }
   let detail = '';
   try {
     const parsed = JSON.parse(bodyText);
@@ -387,67 +390,39 @@ function formatHttpError(provider: AiProvider, status: number, bodyText: string)
   return new Error(`שגיאה מול ${label} (${status})${detail ? `: ${detail}` : ''}`);
 }
 
-async function runGeminiInteraction(params: {
-  key: string;
-  systemPrompt: string;
-  audio?: Blob;
-  text?: string;
-  previousInteractionId?: string;
-  history: VoiceSessionMessage[];
-}): Promise<VoiceAiResult> {
-  let input: unknown;
-  if (params.audio) {
-    const b64 = await blobToBase64(params.audio);
-    const mimeType = normalizeMimeType(params.audio.type);
-    const hint = params.text?.trim()
-      ? `הקשב להקלטה והחזר JSON. הקשר נוסף: ${params.text.trim()}`
-      : 'האזן לפקודת המשתמש בעברית והחזר את פעולות ה־JSON המדויקות.';
-    input = [
-      { type: 'text', text: hint },
-      { type: 'audio', data: b64, mime_type: mimeType },
-    ];
-  } else {
-    const historyPrefix =
-      !params.previousInteractionId && params.history.length > 0
-        ? `הקשר שיחה קודם:\n${params.history.map((m) => `${m.role === 'user' ? 'משתמש' : 'עוזר'}: ${m.text}`).join('\n')}\n\n`
-        : '';
-    input = `${historyPrefix}${params.text || ''}`;
+const GEMINI_MODELS = [
+  'gemini-4-hydrogen',
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-4-argon',
+] as const;
+
+const GEMINI_COOLDOWN_MS = 90_000;
+const geminiCooldownUntil = new Map<string, number>();
+
+function orderedGeminiModels(): string[] {
+  const now = Date.now();
+  const healthy: string[] = [];
+  const cooling: string[] = [];
+  for (const model of GEMINI_MODELS) {
+    if ((geminiCooldownUntil.get(model) ?? 0) > now) cooling.push(model);
+    else healthy.push(model);
   }
+  return [...healthy, ...cooling];
+}
 
-  const body: Record<string, unknown> = {
-    model: 'gemini-4-hydrogen',
-    system_instruction: params.systemPrompt,
-    input,
-    response_format: {
-      type: 'text',
-      mime_type: 'application/json',
-      schema: AI_RESPONSE_SCHEMA,
-    },
-  };
-  if (params.previousInteractionId) {
-    body.previous_interaction_id = params.previousInteractionId;
-  }
+function isFailoverGeminiStatus(status: number): boolean {
+  return status === 429 || status === 404 || status === 500 || status === 502 || status === 503 || status === 504;
+}
 
-  const res = await fetch('https://generativelanguage.googleapis.com/v1/interactions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': params.key,
-    },
-    body: JSON.stringify(body),
-  });
+interface GeminiInteractionResponse {
+  id?: string;
+  output_text?: string;
+  steps?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
+  outputs?: Array<{ type?: string; text?: string }>;
+}
 
-  if (!res.ok) {
-    throw formatHttpError('gemini', res.status, await res.text());
-  }
-
-  const data = (await res.json()) as {
-    id?: string;
-    output_text?: string;
-    steps?: Array<{ type?: string; content?: Array<{ type?: string; text?: string }> }>;
-    outputs?: Array<{ type?: string; text?: string }>;
-  };
-
+function extractGeminiInteractionText(data: GeminiInteractionResponse): string {
   let rawText = data.output_text || '';
   if (!rawText && Array.isArray(data.steps)) {
     for (let i = data.steps.length - 1; i >= 0; i--) {
@@ -467,8 +442,112 @@ async function runGeminiInteraction(params: {
       .map((o) => o.text)
       .join('');
   }
-  if (!rawText) throw new Error('Gemini לא החזיר תשובה טקסטואלית.');
-  return parseAiResult(rawText, data.id);
+  return rawText;
+}
+
+async function runGeminiInteraction(params: {
+  key: string;
+  systemPrompt: string;
+  audio?: Blob;
+  text?: string;
+  previousInteractionId?: string;
+  history: VoiceSessionMessage[];
+}): Promise<VoiceAiResult> {
+  const audioPayload = params.audio
+    ? { data: await blobToBase64(params.audio), mimeType: normalizeMimeType(params.audio.type) }
+    : null;
+
+  const historyPrefix =
+    params.history.length > 0
+      ? `הקשר שיחה קודם:\n${params.history.map((m) => `${m.role === 'user' ? 'משתמש' : 'עוזר'}: ${m.text}`).join('\n')}\n\n`
+      : '';
+
+  const buildInput = (usePrevId: boolean): unknown => {
+    const extraHistory = !usePrevId ? historyPrefix : '';
+    if (audioPayload) {
+      const hint = params.text?.trim()
+        ? `הקשב להקלטה והחזר JSON. הקשר נוסף: ${params.text.trim()}`
+        : 'האזן לפקודת המשתמש בעברית והחזר את פעולות ה־JSON המדויקות.';
+      return [
+        { type: 'text', text: `${extraHistory}${hint}` },
+        { type: 'audio', data: audioPayload.data, mime_type: audioPayload.mimeType },
+      ];
+    }
+    return `${extraHistory}${params.text || ''}`;
+  };
+
+  const sendAttempt = async (model: string, usePrevId: boolean): Promise<Response> => {
+    const body: Record<string, unknown> = {
+      model,
+      system_instruction: params.systemPrompt,
+      input: buildInput(usePrevId),
+      response_format: {
+        type: 'text',
+        mime_type: 'application/json',
+        schema: AI_RESPONSE_SCHEMA,
+      },
+    };
+    if (usePrevId && params.previousInteractionId) {
+      body.previous_interaction_id = params.previousInteractionId;
+    }
+
+    return fetch('https://generativelanguage.googleapis.com/v1/interactions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': params.key,
+      },
+      body: JSON.stringify(body),
+    });
+  };
+
+  const parseSuccess = async (res: Response, model: string): Promise<VoiceAiResult> => {
+    const data = (await res.json()) as GeminiInteractionResponse;
+    const rawText = extractGeminiInteractionText(data);
+    if (!rawText) throw new Error('Gemini לא החזיר תשובה טקסטואלית.');
+    return parseAiResult(rawText, model === GEMINI_MODELS[0] ? data.id : undefined);
+  };
+
+  const candidates = orderedGeminiModels();
+  let lastStatus = 503;
+  let lastErrText = '';
+
+  for (let idx = 0; idx < candidates.length; idx++) {
+    const model = candidates[idx];
+    const usePrevId = Boolean(params.previousInteractionId && model === GEMINI_MODELS[0] && idx === 0);
+    const res = await sendAttempt(model, usePrevId);
+
+    if (res.ok) {
+      return parseSuccess(res, model);
+    }
+
+    const errText = await res.text();
+    if (res.status === 401 || res.status === 403) {
+      throw formatHttpError('gemini', res.status, errText);
+    }
+    if (isFailoverGeminiStatus(res.status)) {
+      if (res.status === 503 || res.status === 429) {
+        geminiCooldownUntil.set(model, Date.now() + GEMINI_COOLDOWN_MS);
+      }
+      lastStatus = res.status;
+      lastErrText = errText;
+      continue;
+    }
+    throw formatHttpError('gemini', res.status, errText);
+  }
+
+  if (lastStatus === 503 || lastStatus === 502 || lastStatus === 504) {
+    await new Promise((r) => setTimeout(r, 800));
+    const retryModel = 'gemini-3.5-flash-lite';
+    const retryRes = await sendAttempt(retryModel, false);
+    if (retryRes.ok) {
+      return parseSuccess(retryRes, retryModel);
+    }
+    const retryErrText = await retryRes.text();
+    throw formatHttpError('gemini', retryRes.status, retryErrText);
+  }
+
+  throw formatHttpError('gemini', lastStatus, lastErrText);
 }
 
 async function transcribeWithOpenAi(key: string, audio: Blob): Promise<string> {
@@ -645,20 +724,38 @@ export async function testAiConnection(
 
   try {
     if (provider === 'gemini') {
-      const res = await fetch('https://generativelanguage.googleapis.com/v1/interactions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': key,
-        },
-        body: JSON.stringify({
-          model: 'gemini-4-hydrogen',
-          input: 'Reply with the single word OK.',
-          store: false,
-        }),
-      });
-      if (!res.ok) throw formatHttpError('gemini', res.status, await res.text());
-      return { ok: true };
+      const candidates = orderedGeminiModels();
+      let lastStatus = 503;
+      let lastErrText = '';
+      for (const model of candidates) {
+        const res = await fetch('https://generativelanguage.googleapis.com/v1/interactions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': key,
+          },
+          body: JSON.stringify({
+            model,
+            input: 'Reply with the single word OK.',
+            store: false,
+          }),
+        });
+        if (res.ok) return { ok: true };
+        const errText = await res.text();
+        if (res.status === 401 || res.status === 403) {
+          throw formatHttpError('gemini', res.status, errText);
+        }
+        if (isFailoverGeminiStatus(res.status)) {
+          if (res.status === 503 || res.status === 429) {
+            geminiCooldownUntil.set(model, Date.now() + GEMINI_COOLDOWN_MS);
+          }
+          lastStatus = res.status;
+          lastErrText = errText;
+          continue;
+        }
+        throw formatHttpError('gemini', res.status, errText);
+      }
+      throw formatHttpError('gemini', lastStatus, lastErrText);
     }
 
     if (provider === 'openai') {
