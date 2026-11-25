@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>אין כלום בבית — ממתינים לקליטה</title>
+  <style>
+    :root {
+      --bg: oklch(0.980 0.006 80);
+      --card: oklch(0.994 0.004 80);
+      --border: oklch(0.915 0.007 80);
+      --emerald: oklch(0.48 0.145 152);
+      --emerald-dark: oklch(0.40 0.145 152);
+      --emerald-soft: oklch(0.952 0.036 152);
+      --text: oklch(0.18 0.02 240);
+      --muted: oklch(0.46 0.02 240);
+      --on-brand: oklch(0.992 0.004 80);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Rubik', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      width: 100%;
+      max-width: 380px;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 28px 22px;
+      text-align: center;
+      box-shadow: 0 8px 24px -6px oklch(0.20 0.02 240 / 0.10);
+    }
+    .icon-wrap {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 16px;
+      border-radius: 16px;
+      background: var(--emerald-soft);
+      color: var(--emerald-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 20px;
+      font-weight: 700;
+    }
+    p {
+      margin: 0 0 20px;
+      font-size: 14px;
+      line-height: 1.5;
+      color: var(--muted);
+    }
+    button {
+      width: 100%;
+      height: 46px;
+      border: 0;
+      border-radius: 14px;
+      background: var(--emerald);
+      color: var(--on-brand);
+      font: inherit;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:active {
+      transform: scale(0.98);
+      background: var(--emerald-dark);
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="icon-wrap" aria-hidden="true">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 20h.01" />
+        <path d="M8.5 16.429a5 5 0 0 1 7 0" />
+        <path d="M5 12.859a10 10 0 0 1 5.17-2.69" />
+        <path d="M19 12.859a10 10 0 0 0-2.007-1.523" />
+        <path d="M2 8.82a15 15 0 0 1 4.177-2.643" />
+        <path d="M22 8.82a15 15 0 0 0-11.288-3.764" />
+        <line x1="2" y1="2" x2="22" y2="22" />
+      </svg>
+    </div>
+    <h1>אין קליטה כרגע</h1>
+    <p>האפליקציה תיטען אוטומטית ברגע שהקליטה תחזור.</p>
+    <button type="button" onclick="window.location.replace('https://yonimeir.github.io/family-shopping/')">
+      נסה שוב
+    </button>
+  </main>
+  <script>
+    window.addEventListener('online', function () {
+      window.location.replace('https://yonimeir.github.io/family-shopping/');
+    });
+  </script>
+</body>
+</html>

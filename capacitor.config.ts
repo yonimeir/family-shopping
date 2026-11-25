@@ -6,6 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     url: 'https://yonimeir.github.io/family-shopping/',
+    errorPath: 'offline.html',
     cleartext: false,
     allowNavigation: ['yonimeir.github.io'],
   },
@@ -14,6 +15,7 @@ const config: CapacitorConfig = {
     allowMixedContent: false,
     captureInput: true,
     webContentsDebuggingEnabled: false,
+    adjustMarginsForEdgeToEdge: 'auto',
   },
 };
 
