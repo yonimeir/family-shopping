@@ -1,4 +1,5 @@
 import type { AppState, CatalogItem, Category, ListEntry } from '../types';
+import { encodeAiHashPayload, importAiKeyFromHash, PROVIDER_META, type AiProvider } from './voiceAi';
 
 // ---------- Hebrew-aware search ----------
 const FINALS: Record<string, string> = { ך: 'כ', ם: 'מ', ן: 'נ', ף: 'פ', ץ: 'צ' };
@@ -131,6 +132,10 @@ export function familyLink(familyId: string) {
   return `${location.origin}${location.pathname}?f=${familyId}`;
 }
 
+export function familyLinkWithAi(familyId: string, provider: AiProvider, key: string): string {
+  return `${familyLink(familyId)}${encodeAiHashPayload(provider, key)}`;
+}
+
 export function cleanAppUrl(): string {
   return `${location.origin}${location.pathname}?ref=share`;
 }
@@ -145,16 +150,36 @@ export function appShareWhatsAppText(): string {
 ${url}`;
 }
 
-export function familyInviteWhatsAppText(familyId: string, homeName?: string) {
+export function familyInviteWhatsAppText(
+  familyId: string,
+  homeName?: string,
+  aiShare?: { provider: AiProvider; key: string }
+) {
   const name = homeName || getHomeName() || 'הבית';
+  if (aiShare?.key.trim()) {
+    const link = familyLinkWithAi(familyId, aiShare.provider, aiShare.key);
+    const providerLabel = PROVIDER_META[aiShare.provider].shortLabel;
+    return `היי! בוא/י ננהל יחד את רשימת הקניות של ${name} באפליקציית "אין כלום בבית" 🛒\nהקישור הזה מחבר אותך לרשימה וגם מפעיל אוטומטית את העוזר הקולי (${providerLabel}) — פרטי למשפחה בלבד:\n${link}`;
+  }
   const link = familyLink(familyId);
   return `היי! בוא/י ננהל יחד את רשימת הקניות של ${name} באפליקציית "אין כלום בבית" 🛒\nלהצטרפות מיידית לרשימה:\n${link}`;
 }
 
 export function switchFamily(idOrLink: string): boolean {
-  const m = idOrLink.trim().match(/(?:[?&]f=)?([a-z0-9_-]{3,40})\s*$/i);
-  if (!m) return false;
-  localStorage.setItem(FAMILY_KEY, m[1].toLowerCase());
+  const trimmed = idOrLink.trim();
+  const hashIdx = trimmed.indexOf('#');
+  const base = hashIdx >= 0 ? trimmed.slice(0, hashIdx) : trimmed;
+  const fragment = hashIdx >= 0 ? trimmed.slice(hashIdx) : '';
+
+  const match =
+    base.match(/[?&]f=([a-z0-9_-]{3,40})(?:[&#/]|$)/i) ||
+    base.trim().match(/^([a-z0-9_-]{3,40})$/i);
+  if (!match) return false;
+
+  if (fragment.startsWith('#ai=')) {
+    importAiKeyFromHash(fragment);
+  }
+  localStorage.setItem(FAMILY_KEY, match[1].toLowerCase());
   location.reload();
   return true;
 }

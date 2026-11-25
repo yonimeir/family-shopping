@@ -88,11 +88,11 @@ export function useStore(familyId: string | null) {
 
   const b = () => backendRef.current!;
 
-  const addToList = useCallback((item: CatalogItem, qty = item.defaultQty) => {
+  const addToList = useCallback((item: CatalogItem, qty = item.defaultQty, note = '') => {
     const entry: ListEntry = {
       itemId: item.id,
       qty,
-      notes: '',
+      notes: note.trim(),
       isPurchased: false,
       addedBy: getMyName(),
       addedByDevice: getDeviceId(),
@@ -104,6 +104,19 @@ export function useStore(familyId: string | null) {
   const actions = useMemo(
     () => ({
       addToList,
+      addOrUpdateList(item: CatalogItem, qty?: number, note?: string) {
+        const existing = stateRef.current.list[item.id];
+        if (!existing) {
+          return addToList(item, qty ?? item.defaultQty, note ?? '');
+        }
+        const patch: Partial<ListEntry> = { isPurchased: false, purchasedAt: 0 };
+        if (typeof qty === 'number' && qty > 0) patch.qty = qty;
+        if (typeof note === 'string' && note.trim()) patch.notes = note.trim();
+        return b().patchEntry(item.id, patch);
+      },
+      removeFromList: (itemId: string) => b().removeEntry(itemId),
+      setPurchased: (itemId: string, isPurchased: boolean) =>
+        b().patchEntry(itemId, { isPurchased, purchasedAt: isPurchased ? Date.now() : 0 }),
       /** Returns the removed entry (for undo) or null when it was added. */
       toggleInCart(item: CatalogItem): ListEntry | null {
         const existing = stateRef.current.list[item.id];
@@ -115,6 +128,23 @@ export function useStore(familyId: string | null) {
         return null;
       },
       restoreEntry: (e: ListEntry) => b().setEntry(e),
+      restoreVoiceUndo(
+        beforeList: Record<string, ListEntry>,
+        affectedItemIds: string[],
+        createdCatalogIds: string[]
+      ) {
+        for (const id of affectedItemIds) {
+          const prev = beforeList[id];
+          if (prev) {
+            void b().setEntry(prev);
+          } else {
+            void b().removeEntry(id);
+          }
+        }
+        for (const cid of createdCatalogIds) {
+          void b().deleteCatalogItem(cid);
+        }
+      },
       /** Returns removed entry when qty hit 0. */
       changeQty(item: CatalogItem, dir: 1 | -1): ListEntry | null {
         const e = stateRef.current.list[item.id];
@@ -134,20 +164,27 @@ export function useStore(familyId: string | null) {
         const isPurchased = !e.isPurchased;
         void b().patchEntry(itemId, { isPurchased, purchasedAt: isPurchased ? Date.now() : 0 });
       },
-      addNewItem(name: string, categoryId: string, defaultUnit: string, defaultQty: number) {
+      addNewItem(
+        name: string,
+        categoryId: string,
+        defaultUnit: string,
+        defaultQty: number,
+        subCategory = 'נוספו על ידינו',
+        notes = ''
+      ) {
         const maxIdx = Math.max(0, ...Object.values(stateRef.current.catalog).map((i) => i.sortIndex));
         const item: CatalogItem = {
           id: `c_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
           name: name.trim(),
           categoryId,
-          subCategory: 'נוספו על ידינו',
+          subCategory: subCategory.trim() || 'נוספו על ידינו',
           defaultUnit,
           defaultQty,
           isCore: false,
           sortIndex: maxIdx + 1,
         };
         void b().upsertCatalogItem(item);
-        void addToList(item);
+        void addToList(item, defaultQty, notes);
         return item;
       },
       updateItem: (item: CatalogItem) => b().upsertCatalogItem(item),

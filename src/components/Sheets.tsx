@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { UNITS } from '../data/seed';
 import type { AppState, CatalogItem, Category } from '../types';
 import {
@@ -7,6 +7,7 @@ import {
   cleanAppUrl,
   familyInviteWhatsAppText,
   familyLink,
+  familyLinkWithAi,
   getHomeName,
   getMyName,
   setHomeName,
@@ -14,6 +15,17 @@ import {
   sortedCategories,
   switchFamily,
 } from '../lib/util';
+import {
+  getAiKey,
+  getAiProvider,
+  hasActiveAiKey,
+  PROVIDER_META,
+  setAiKey,
+  setAiProvider,
+  testAiConnection,
+  type AiProvider,
+} from '../lib/voiceAi';
+import { IconCheck, IconCopy, IconEye, IconEyeOff, IconKey, IconShare, IconSparkles } from './Icons';
 import { Sheet } from './ui';
 import fridgeBadge from '../assets/fridge-retro-badge.png';
 
@@ -270,6 +282,7 @@ export function SettingsSheet({
   state,
   familyId,
   backendKind,
+  focusSection,
   onSaveCategories,
   onToast,
   onClose,
@@ -277,6 +290,7 @@ export function SettingsSheet({
   state: AppState;
   familyId: string;
   backendKind: 'firebase' | 'local' | null;
+  focusSection?: 'ai';
   onSaveCategories: (c: Category[]) => void;
   onToast: (t: string) => void;
   onClose: () => void;
@@ -284,8 +298,66 @@ export function SettingsSheet({
   const [name, setName] = useState(getMyName());
   const [homeName, setHomeNameState] = useState(getHomeName() || (familyId === 'meir-family' ? 'משפחת מאיר' : 'הבית שלנו'));
   const [joinCode, setJoinCode] = useState('');
+  const [aiProvider, setAiProviderState] = useState<AiProvider>(() => getAiProvider());
+  const [aiKey, setAiKeyState] = useState<string>(() => getAiKey(getAiProvider()));
+  const [showKey, setShowKey] = useState(false);
+  const [testingAi, setTestingAi] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const aiBlockRef = useRef<HTMLElement>(null);
   const cats = sortedCategories(state.categories);
   const link = familyLink(familyId);
+
+  useEffect(() => {
+    if (focusSection !== 'ai') return;
+    const t = window.setTimeout(() => {
+      aiBlockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 180);
+    return () => window.clearTimeout(t);
+  }, [focusSection]);
+
+  const switchAiProvider = (next: AiProvider) => {
+    setAiProvider(next);
+    setAiProviderState(next);
+    setAiKeyState(getAiKey(next));
+    setTestResult(null);
+  };
+
+  const handleAiKeyChange = (val: string) => {
+    setAiKeyState(val);
+    setAiKey(aiProvider, val);
+    setTestResult(null);
+  };
+
+  const runAiTest = async () => {
+    setTestingAi(true);
+    setTestResult(null);
+    const res = await testAiConnection(aiProvider, aiKey);
+    setTestingAi(false);
+    if (res.ok) {
+      setTestResult({ ok: true, msg: 'מחובר בהצלחה! העוזר הקולי מוכן.' });
+    } else {
+      setTestResult({ ok: false, msg: res.error });
+    }
+  };
+
+  const providerMeta = PROVIDER_META[aiProvider];
+
+  const shareAiFamilyWhatsApp = () => {
+    if (!aiKey.trim()) return;
+    const text = familyInviteWhatsAppText(familyId, homeName, { provider: aiProvider, key: aiKey });
+    const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const copyAiFamilyLink = async () => {
+    if (!aiKey.trim()) return;
+    try {
+      await navigator.clipboard.writeText(familyLinkWithAi(familyId, aiProvider, aiKey));
+      onToast('קישור ההזמנה עם מפתח העוזר הקולי הועתק');
+    } catch {
+      onToast('לא ניתן להעתיק אוטומטית');
+    }
+  };
 
   const move = (idx: number, dir: -1 | 1) => {
     const j = idx + dir;
@@ -344,6 +416,121 @@ export function SettingsSheet({
           onChange={(e) => setName(e.target.value)}
           onBlur={() => setMyName(name)}
         />
+      </section>
+
+      <section
+        id="settings-ai-block"
+        ref={aiBlockRef}
+        className={`settings-block ai-settings-block ${focusSection === 'ai' ? 'is-highlighted' : ''}`}
+      >
+        <div className="ai-settings-header">
+          <IconSparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+          <h3>עוזר קולי חכם (AI)</h3>
+        </div>
+        <p className="muted">בחרו ספק AI והדביקו מפתח אישי (נשמר מקומית במכשיר בלבד)</p>
+
+        <div className="ai-provider-tabs" role="tablist" aria-label="בחירת ספק AI">
+          {(['gemini', 'openai', 'claude'] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              role="tab"
+              aria-selected={aiProvider === p}
+              className={`ai-provider-tab ${aiProvider === p ? 'is-active' : ''}`}
+              onClick={() => switchAiProvider(p)}
+            >
+              <span>{PROVIDER_META[p].shortLabel}</span>
+              {getAiKey(p).length > 0 && <span className="ai-tab-dot" aria-hidden="true" />}
+            </button>
+          ))}
+        </div>
+
+        <p className="ai-provider-hint">{providerMeta.hint}</p>
+
+        <div className="ai-key-input-wrap">
+          <span className="ai-key-icon" aria-hidden="true">
+            <IconKey className="w-4 h-4" />
+          </span>
+          <input
+            type={showKey ? 'text' : 'password'}
+            dir="ltr"
+            autoComplete="off"
+            spellCheck={false}
+            value={aiKey}
+            placeholder={providerMeta.placeholder}
+            onChange={(e) => handleAiKeyChange(e.target.value)}
+            onBlur={() => setAiKey(aiProvider, aiKey)}
+            aria-label={`מפתח API עבור ${providerMeta.shortLabel}`}
+          />
+          <button
+            type="button"
+            className="ai-key-eye-btn"
+            onClick={() => setShowKey((v) => !v)}
+            aria-label={showKey ? 'הסתר מפתח' : 'הצג מפתח'}
+          >
+            {showKey ? <IconEyeOff className="w-4 h-4" /> : <IconEye className="w-4 h-4" />}
+          </button>
+        </div>
+
+        <div className="ai-key-actions">
+          <button
+            type="button"
+            className="btn-ghost ai-test-btn"
+            disabled={!aiKey.trim() || testingAi}
+            onClick={() => void runAiTest()}
+          >
+            {testingAi ? 'בודק חיבור...' : 'בדיקת חיבור'}
+          </button>
+          {aiKey.trim() && (
+            <button
+              type="button"
+              className="btn-ghost ai-clear-btn"
+              onClick={() => {
+                handleAiKeyChange('');
+                onToast('המפתח נמחק מהמכשיר');
+              }}
+            >
+              נקה מפתח
+            </button>
+          )}
+          <a
+            href={providerMeta.docsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="ai-docs-link"
+          >
+            {providerMeta.docsLabel}
+          </a>
+        </div>
+
+        {testResult && (
+          <div className={`ai-test-status ${testResult.ok ? 'is-ok' : 'is-err'}`} role="status">
+            {testResult.ok && <IconCheck className="w-4 h-4 shrink-0" />}
+            <span>{testResult.msg}</span>
+          </div>
+        )}
+
+        {aiKey.trim().length > 0 && (
+          <div className="ai-share-family-card">
+            <div className="ai-share-family-head">
+              <IconShare className="w-4 h-4 shrink-0" />
+              <span>שתפו עם כל המשפחה בקליק</span>
+            </div>
+            <p className="ai-share-family-desc">
+              שולח קישור הזמנה פרטי לבית שכולל את מפתח {providerMeta.shortLabel} ב־#hash (ללא שמירה בענן).
+            </p>
+            <div className="ai-share-family-actions">
+              <button type="button" className="btn-whatsapp ai-share-wa-btn" onClick={shareAiFamilyWhatsApp}>
+                <IconShare className="w-4 h-4 shrink-0" />
+                <span>שליחה בוואטסאפ לבית</span>
+              </button>
+              <button type="button" className="btn-secondary ai-share-copy-btn" onClick={copyAiFamilyLink}>
+                <IconCopy className="w-4 h-4 shrink-0" />
+                <span>העתקת קישור</span>
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="settings-block home-card-block">
@@ -454,6 +641,10 @@ export function ShareSheet({
 }) {
   const homeName = getHomeName();
   const inListCount = Object.values(state.list).filter((e) => state.catalog[e.itemId]).length;
+  const activeProvider = getAiProvider();
+  const activeKey = getAiKey(activeProvider);
+  const canShareAi = hasActiveAiKey();
+  const [includeAiKey, setIncludeAiKey] = useState(false);
 
   const shareAppWhatsApp = () => {
     const text = appShareWhatsAppText();
@@ -471,15 +662,24 @@ export function ShareSheet({
   };
 
   const shareFamilyWhatsApp = () => {
-    const text = familyInviteWhatsAppText(familyId, homeName);
+    const aiShare = canShareAi && includeAiKey ? { provider: activeProvider, key: activeKey } : undefined;
+    const text = familyInviteWhatsAppText(familyId, homeName, aiShare);
     const url = `https://wa.me/?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   const copyFamilyLink = async () => {
     try {
-      await navigator.clipboard.writeText(familyLink(familyId));
-      onToast('קישור להצטרפות לבית הועתק! 🔗');
+      const urlToCopy =
+        canShareAi && includeAiKey
+          ? familyLinkWithAi(familyId, activeProvider, activeKey)
+          : familyLink(familyId);
+      await navigator.clipboard.writeText(urlToCopy);
+      onToast(
+        canShareAi && includeAiKey
+          ? 'קישור ההזמנה + מפתח העוזר הקולי הועתק'
+          : 'קישור להצטרפות לבית הועתק! 🔗'
+      );
     } catch {
       onToast('לא ניתן להעתיק אוטומטית');
     }
@@ -529,7 +729,7 @@ export function ShareSheet({
         </section>
 
         {/* Section 2: Invite household member to this home */}
-        <section className="share-sheet-card share-card-family">
+        <section className={`share-sheet-card share-card-family ${canShareAi && includeAiKey ? 'is-with-ai' : ''}`}>
           <div className="share-card-header">
             <span className="share-card-icon">👨‍👩‍👧</span>
             <div className="share-card-text">
@@ -537,6 +737,30 @@ export function ShareSheet({
               <p>סנכרון מלא באותה רשימת קניות בזמן אמת עם בני הבית</p>
             </div>
           </div>
+
+          {canShareAi && (
+            <label className="ai-share-toggle">
+              <input
+                type="checkbox"
+                className="ai-share-checkbox"
+                checked={includeAiKey}
+                onChange={(e) => setIncludeAiKey(e.target.checked)}
+              />
+              <span className="ai-share-switch" aria-hidden="true">
+                <span className="ai-share-switch-thumb" />
+              </span>
+              <span className="ai-share-toggle-text">
+                <span className="ai-share-toggle-title">
+                  <IconKey className="w-3.5 h-3.5 shrink-0" />
+                  <span>כלול גם את מפתח העוזר הקולי ({PROVIDER_META[activeProvider].shortLabel})</span>
+                </span>
+                <span className="ai-share-toggle-sub">
+                  נשמר מקומית אצל בני הבית דרך #hash — ללא שמירה בענן
+                </span>
+              </span>
+            </label>
+          )}
+
           <div className="home-share-actions">
             <button type="button" className="btn-whatsapp" onClick={shareFamilyWhatsApp}>
               💬 הזמנה בוואטסאפ

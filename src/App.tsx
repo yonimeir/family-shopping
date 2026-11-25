@@ -3,8 +3,10 @@ import { flushSync } from 'react-dom';
 import { CatalogView } from './components/CatalogView';
 import { AddItemSheet, CheckoutSheet, EditItemSheet, NoteSheet, SettingsSheet, ShareSheet } from './components/Sheets';
 import { SuperView } from './components/SuperView';
+import { VoiceAssistant } from './components/VoiceAssistant';
 import { RollingNumber, Toast, type ToastData } from './components/ui';
 import { getPendingInviteFromUrl, haptic, resolveFamilyId } from './lib/util';
+import { consumeAiKeyFromUrlHash } from './lib/voiceAi';
 import { useStore } from './lib/useStore';
 import type { CatalogItem, ListEntry } from './types';
 import { IconHome, IconCart, IconShare, IconSettings } from './components/Icons';
@@ -18,9 +20,17 @@ type SheetState =
   | { kind: 'edit'; item: CatalogItem }
   | { kind: 'note'; item: CatalogItem }
   | { kind: 'checkout' }
-  | { kind: 'settings' }
+  | { kind: 'settings'; focusSection?: 'ai' }
   | { kind: 'share' }
   | null;
+
+function consumeInitialVoiceFlag(): boolean {
+  const url = new URL(location.href);
+  if (url.searchParams.get('voice') !== '1') return false;
+  url.searchParams.delete('voice');
+  history.replaceState(null, '', url.toString());
+  return true;
+}
 
 export default function App() {
   const [familyId, setFamilyId] = useState<string | null>(resolveFamilyId);
@@ -29,6 +39,14 @@ export default function App() {
   const [mode, setModeRaw] = useState<Mode>(() => (localStorage.getItem('fs:mode') as Mode) || 'home');
   const [enteredAt, setEnteredAt] = useState(() => Number(localStorage.getItem('fs:superEnteredAt')) || Date.now());
   const [sheet, setSheet] = useState<SheetState>(null);
+  const [initialVoiceLaunch] = useState<boolean>(consumeInitialVoiceFlag);
+  const [initialImportedAi] = useState(() => consumeAiKeyFromUrlHash());
+  const [autoOpenVoiceTrigger, setAutoOpenVoiceTrigger] = useState(0);
+  const [voiceCatalogCmd, setVoiceCatalogCmd] = useState<{
+    id: number;
+    filter?: 'all' | 'core' | 'cart';
+    query?: string;
+  } | null>(null);
   const [toast, setToast] = useState<ToastData | null>(null);
   const [slot, setSlot] = useState<HTMLDivElement | null>(null);
   const [headerCollapsed, setHeaderCollapsed] = useState(false);
@@ -135,6 +153,13 @@ export default function App() {
     };
   }, [mode]);
 
+  const autoVoiceFiredRef = useRef(false);
+  useEffect(() => {
+    if (!initialVoiceLaunch || !familyId || !state.ready || autoVoiceFiredRef.current) return;
+    autoVoiceFiredRef.current = true;
+    setAutoOpenVoiceTrigger((n) => n + 1);
+  }, [initialVoiceLaunch, familyId, state.ready]);
+
   const onProgrammaticScroll = useCallback((collapse: boolean) => {
     ignoreScrollUntilRef.current = performance.now() + 450;
     setHeaderCollapsed(collapse);
@@ -144,6 +169,25 @@ export default function App() {
     setToast({ id: Date.now(), text, onAction: undo, actionLabel: undo ? 'בטל ↩' : undefined });
   }, []);
   const clearToast = useCallback(() => setToast(null), []);
+
+  const importedAiToastedRef = useRef(false);
+  useEffect(() => {
+    if (!initialImportedAi || importedAiToastedRef.current) return;
+    importedAiToastedRef.current = true;
+    showToast(`העוזר הקולי (${initialImportedAi.label}) הופעל במכשיר הזה`);
+  }, [initialImportedAi, showToast]);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      if (!location.hash.startsWith('#ai=')) return;
+      const imported = consumeAiKeyFromUrlHash();
+      if (imported) {
+        showToast(`העוזר הקולי (${imported.label}) הופעל במכשיר הזה`);
+      }
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, [showToast]);
 
   const setMode = (m: Mode) => {
     if (m === mode) return;
@@ -304,6 +348,7 @@ export default function App() {
             onEdit={onEdit}
             onAddNew={onAddNew}
             onProgrammaticScroll={onProgrammaticScroll}
+            voiceFilterCmd={voiceCatalogCmd}
           />
         ) : (
           <SuperView
@@ -378,6 +423,7 @@ export default function App() {
           state={state}
           familyId={familyId}
           backendKind={kind}
+          focusSection={sheet.focusSection}
           onSaveCategories={actions.saveCategories}
           onToast={showToast}
           onClose={() => setSheet(null)}
@@ -400,6 +446,20 @@ export default function App() {
             setPendingInvite(null);
           }}
           onDismissPendingInvite={() => setPendingInvite(null)}
+        />
+      )}
+
+      {state.ready && (
+        <VoiceAssistant
+          state={state}
+          mode={mode}
+          actions={actions}
+          setMode={setMode}
+          onCatalogCommand={(cmd) => setVoiceCatalogCmd({ id: Date.now(), ...cmd })}
+          onToast={showToast}
+          onOpenAiSettings={() => setSheet({ kind: 'settings', focusSection: 'ai' })}
+          autoOpenTrigger={autoOpenVoiceTrigger}
+          otherSheetOpen={Boolean(sheet)}
         />
       )}
 

@@ -11,5 +11,16 @@
   "icons": [
     { "src": "logo-v7.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
     { "src": "logo-v7.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "הוספה בקול",
+      "short_name": "מיקרופון",
+      "description": "פתיחה ישירה של העוזר הקולי להוספת מוצרים",
+      "url": "./?voice=1",
+      "icons": [
+        { "src": "voice-shortcut.png", "sizes": "192x192", "type": "image/png" }
+      ]
+    }
   ]
 }

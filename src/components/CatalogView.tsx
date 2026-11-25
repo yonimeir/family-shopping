@@ -17,9 +17,10 @@ interface Props {
   onEdit: (item: CatalogItem) => void;
   onAddNew: (name: string) => void;
   onProgrammaticScroll?: (collapse: boolean) => void;
+  voiceFilterCmd?: { id: number; filter?: Filter; query?: string } | null;
 }
 
-export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdit, onAddNew, onProgrammaticScroll }: Props) {
+export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdit, onAddNew, onProgrammaticScroll, voiceFilterCmd }: Props) {
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [coreSnapshot, setCoreSnapshot] = useState<Set<string>>(new Set());
@@ -62,6 +63,24 @@ export function CatalogView({ state, toolbarSlot, onToggle, onQty, onNote, onEdi
     onProgrammaticScroll?.(false);
     window.scrollTo({ top: 0 });
   };
+
+  useEffect(() => {
+    if (!voiceFilterCmd) return;
+    if (typeof voiceFilterCmd.query === 'string') {
+      setQuery(voiceFilterCmd.query);
+    }
+    if (voiceFilterCmd.filter) {
+      if (voiceFilterCmd.filter === 'core') {
+        setCoreSnapshot(new Set(items.filter((i) => i.isCore && !state.list[i.id]).map((i) => i.id)));
+      }
+      if (voiceFilterCmd.filter === 'cart') {
+        setCartSnapshot(new Set(Object.keys(state.list)));
+      }
+      setFilter(voiceFilterCmd.filter);
+    }
+    onProgrammaticScroll?.(false);
+    window.scrollTo({ top: 0 });
+  }, [voiceFilterCmd]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Scroll-spy for the category tabs + quick-search reveal.
   useEffect(() => {
