@@ -62,7 +62,7 @@ export const PROVIDER_META: Record<AiProvider, ProviderMeta> = {
     id: 'gemini',
     label: 'Google Gemini',
     shortLabel: 'Gemini',
-    modelLabel: 'gemini-4-hydrogen (גיבוי אוטומטי)',
+    modelLabel: 'gemini-3.5-flash-lite (מהיר + גיבוי)',
     docsUrl: 'https://aistudio.google.com/apikey',
     docsLabel: 'קבלת מפתח חינמי ב־Google AI Studio',
     placeholder: 'AIza...',
@@ -281,7 +281,7 @@ function buildSystemPrompt(state: AppState, currentMode: 'home' | 'super'): stri
 
   const catalogText = Object.values(state.catalog)
     .sort((a, b) => a.sortIndex - b.sortIndex)
-    .map((it) => `${it.id}|${it.name}|${it.categoryId}|${it.defaultUnit}|${it.defaultQty}`)
+    .map((it) => `${it.id}|${it.name}|${it.defaultUnit}`)
     .join('\n');
 
   const activeListText = Object.values(state.list)
@@ -304,7 +304,7 @@ function buildSystemPrompt(state: AppState, currentMode: 'home' | 'super'): stri
     'מחלקות קיימות (categoryId: שם):',
     catsText,
     '',
-    'קטלוג מוצרים קיים (itemId|שם|categoryId|יחידה|כמות_ברירת_מחדל):',
+    'קטלוג מוצרים קיים (itemId|שם|יחידה):',
     catalogText,
     '',
     'הרשימה הפעילה כרגע בבית/בסופר (itemId|שם|כמות|סטטוס|הערה):',
@@ -426,24 +426,48 @@ function formatHttpError(provider: AiProvider, status: number, bodyText: string)
 
 const GEMINI_INTERACTIONS_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions';
 
-const GEMINI_MODELS = [
-  'gemini-4-hydrogen',
-  'gemini-3.5-flash-lite',
-  'gemini-3.1-flash-lite',
-  'gemini-4-argon',
-] as const;
+interface GeminiModelSpec {
+  id: string;
+  thinkingLevel: 'minimal' | 'low';
+}
+
+const GEMINI_MODELS: readonly GeminiModelSpec[] = [
+  { id: 'gemini-3.5-flash-lite', thinkingLevel: 'minimal' },
+  { id: 'gemini-3.1-flash-lite', thinkingLevel: 'minimal' },
+  { id: 'gemini-4-hydrogen', thinkingLevel: 'low' },
+  { id: 'gemini-4-argon', thinkingLevel: 'low' },
+];
 
 const GEMINI_COOLDOWN_MS = 90_000;
 const geminiCooldownUntil = new Map<string, number>();
 
 type GeminiSchemaMode = 'modern' | 'legacy' | 'prompt_only';
-let geminiSchemaMode: GeminiSchemaMode = 'modern';
+const SCHEMA_MODES: readonly GeminiSchemaMode[] = ['modern', 'legacy', 'prompt_only'];
+const SCHEMA_MODE_STORAGE_KEY = 'fs:gemini_schema_mode';
 
-function nextSchemaMode(mode: GeminiSchemaMode): GeminiSchemaMode | null {
-  if (mode === 'modern') return 'legacy';
-  if (mode === 'legacy') return 'prompt_only';
-  return null;
+function loadSavedSchemaMode(): GeminiSchemaMode {
+  try {
+    if (typeof localStorage === 'undefined') return 'modern';
+    const raw = localStorage.getItem(SCHEMA_MODE_STORAGE_KEY);
+    if (raw === 'modern' || raw === 'legacy' || raw === 'prompt_only') return raw;
+  } catch {
+    /* ignore storage errors */
+  }
+  return 'modern';
 }
+
+function saveSchemaMode(mode: GeminiSchemaMode): void {
+  geminiSchemaMode = mode;
+  try {
+    if (typeof localStorage !== 'undefined') {
+      localStorage.setItem(SCHEMA_MODE_STORAGE_KEY, mode);
+    }
+  } catch {
+    /* ignore storage errors */
+  }
+}
+
+let geminiSchemaMode: GeminiSchemaMode = loadSavedSchemaMode();
 
 function isSchemaFieldError(status: number, errText: string): boolean {
   if (status !== 400) return false;
@@ -456,13 +480,19 @@ function isSchemaFieldError(status: number, errText: string): boolean {
   );
 }
 
-function orderedGeminiModels(): string[] {
+function isThinkingConfigError(status: number, errText: string): boolean {
+  if (status !== 400) return false;
+  const lower = errText.toLowerCase();
+  return lower.includes('thinking_level') || lower.includes('generation_config');
+}
+
+function orderedGeminiModels(): GeminiModelSpec[] {
   const now = Date.now();
-  const healthy: string[] = [];
-  const cooling: string[] = [];
-  for (const model of GEMINI_MODELS) {
-    if ((geminiCooldownUntil.get(model) ?? 0) > now) cooling.push(model);
-    else healthy.push(model);
+  const healthy: GeminiModelSpec[] = [];
+  const cooling: GeminiModelSpec[] = [];
+  for (const spec of GEMINI_MODELS) {
+    if ((geminiCooldownUntil.get(spec.id) ?? 0) > now) cooling.push(spec);
+    else healthy.push(spec);
   }
   return [...healthy, ...cooling];
 }
@@ -533,20 +563,26 @@ async function runGeminiInteraction(params: {
   };
 
   const sendAttempt = async (
-    model: string,
+    spec: GeminiModelSpec,
     usePrevId: boolean,
-    schemaMode: GeminiSchemaMode
+    schemaMode: GeminiSchemaMode,
+    includeThinking: boolean
   ): Promise<Response> => {
     const systemInstruction =
       schemaMode === 'prompt_only'
         ? `${params.systemPrompt}\n\nהחזר JSON גולמי בלבד התואם בדיוק לסכמה:\n${JSON.stringify(AI_RESPONSE_SCHEMA)}`
         : params.systemPrompt;
 
+    const shouldStore = Boolean(usePrevId && params.previousInteractionId);
     const body: Record<string, unknown> = {
-      model,
+      model: spec.id,
       system_instruction: systemInstruction,
       input: buildInput(usePrevId),
+      store: shouldStore,
     };
+    if (includeThinking) {
+      body.generation_config = { thinking_level: spec.thinkingLevel };
+    }
     if (schemaMode === 'modern') {
       body.response_format = {
         type: 'text',
@@ -557,13 +593,15 @@ async function runGeminiInteraction(params: {
       body.response_mime_type = 'application/json';
       body.response_format = AI_RESPONSE_SCHEMA;
     }
-    if (usePrevId && params.previousInteractionId) {
+    if (shouldStore) {
       body.previous_interaction_id = params.previousInteractionId;
     }
 
     logVoice('ai:req', 'שליחת בקשה ל-Gemini', {
       provider: 'gemini',
-      model,
+      model: spec.id,
+      thinking: includeThinking ? spec.thinkingLevel : 'default',
+      store: shouldStore,
       url: GEMINI_INTERACTIONS_URL,
       schemaMode,
       hasAudio: Boolean(audioPayload),
@@ -582,7 +620,7 @@ async function runGeminiInteraction(params: {
     });
   };
 
-  const parseSuccess = async (res: Response, model: string, ms: number): Promise<VoiceAiResult> => {
+  const parseSuccess = async (res: Response, spec: GeminiModelSpec, stored: boolean, ms: number): Promise<VoiceAiResult> => {
     const data = (await res.json()) as GeminiInteractionResponse;
     const rawText = extractGeminiInteractionText(data);
     logVoice(
@@ -590,7 +628,7 @@ async function runGeminiInteraction(params: {
       rawText ? 'תגובה מ-Gemini' : 'תגובה ריקה מ-Gemini',
       {
         provider: 'gemini',
-        model,
+        model: spec.id,
         status: res.status,
         ms,
         ok: Boolean(rawText),
@@ -601,7 +639,8 @@ async function runGeminiInteraction(params: {
       rawText ? 'info' : 'error'
     );
     if (!rawText) throw new Error('Gemini לא החזיר תשובה טקסטואלית.');
-    return parseAiResult(rawText, model === GEMINI_MODELS[0] ? data.id : undefined);
+    const keepId = stored && spec.id === GEMINI_MODELS[0].id ? data.id : undefined;
+    return parseAiResult(rawText, keepId);
   };
 
   const candidates = orderedGeminiModels();
@@ -609,44 +648,54 @@ async function runGeminiInteraction(params: {
   let lastErrText = '';
 
   for (let idx = 0; idx < candidates.length; idx++) {
-    const model = candidates[idx];
-    const usePrevId = Boolean(params.previousInteractionId && model === GEMINI_MODELS[0] && idx === 0);
-    let activeSchemaMode: GeminiSchemaMode = geminiSchemaMode;
+    const spec = candidates[idx];
+    const usePrevId = Boolean(params.previousInteractionId && spec.id === GEMINI_MODELS[0].id && idx === 0);
+    const startingMode = loadSavedSchemaMode();
+    const modesToTry: GeminiSchemaMode[] = [
+      startingMode,
+      ...SCHEMA_MODES.filter((m) => m !== startingMode),
+    ];
+    let schemaIdx = 0;
+    let includeThinking = true;
 
     while (true) {
+      const activeSchemaMode = modesToTry[schemaIdx];
       const t0 = Date.now();
-      const res = await sendAttempt(model, usePrevId, activeSchemaMode);
+      const res = await sendAttempt(spec, usePrevId, activeSchemaMode, includeThinking);
       const ms = Date.now() - t0;
 
       if (res.ok) {
-        geminiSchemaMode = activeSchemaMode;
-        return parseSuccess(res, model, ms);
+        saveSchemaMode(activeSchemaMode);
+        return parseSuccess(res, spec, usePrevId, ms);
       }
 
       const errText = await res.text();
       logVoice(
         'ai:res',
         'שגיאת HTTP מ-Gemini',
-        { provider: 'gemini', model, status: res.status, ms, ok: false, snippet: errText.slice(0, 160) },
+        { provider: 'gemini', model: spec.id, status: res.status, ms, ok: false, snippet: errText.slice(0, 160) },
         'error'
       );
       if (res.status === 401 || res.status === 403) {
         throw formatHttpError('gemini', res.status, errText);
       }
-      if (isSchemaFieldError(res.status, errText)) {
-        const next = nextSchemaMode(activeSchemaMode);
-        if (next) {
-          logVoice('ai:schema', 'מעבר למצב סכמה חלופי', { model, from: activeSchemaMode, to: next }, 'warn');
-          geminiSchemaMode = next;
-          activeSchemaMode = next;
-          continue;
-        }
+      if (includeThinking && isThinkingConfigError(res.status, errText)) {
+        logVoice('ai:schema', 'דילוג על thinking_level למודל זה', { model: spec.id }, 'warn');
+        includeThinking = false;
+        continue;
+      }
+      if (isSchemaFieldError(res.status, errText) && schemaIdx + 1 < modesToTry.length) {
+        const nextMode = modesToTry[schemaIdx + 1];
+        logVoice('ai:schema', 'מעבר למצב סכמה חלופי', { model: spec.id, from: activeSchemaMode, to: nextMode }, 'warn');
+        schemaIdx += 1;
+        geminiSchemaMode = nextMode;
+        continue;
       }
       if (isFailoverGeminiStatus(res.status)) {
         if (res.status === 503 || res.status === 429) {
-          geminiCooldownUntil.set(model, Date.now() + GEMINI_COOLDOWN_MS);
+          geminiCooldownUntil.set(spec.id, Date.now() + GEMINI_COOLDOWN_MS);
         }
-        logVoice('ai:failover', 'מעבר למודל גיבוי ב-Gemini', { from: model, status: res.status }, 'warn');
+        logVoice('ai:failover', 'מעבר למודל גיבוי ב-Gemini', { from: spec.id, status: res.status }, 'warn');
         lastStatus = res.status;
         lastErrText = errText;
         break;
@@ -657,18 +706,18 @@ async function runGeminiInteraction(params: {
 
   if (lastStatus === 503 || lastStatus === 502 || lastStatus === 504) {
     await new Promise((r) => setTimeout(r, 800));
-    const retryModel = 'gemini-3.5-flash-lite';
+    const retrySpec = GEMINI_MODELS[0];
     const t0 = Date.now();
-    const retryRes = await sendAttempt(retryModel, false, geminiSchemaMode);
+    const retryRes = await sendAttempt(retrySpec, false, geminiSchemaMode, true);
     const ms = Date.now() - t0;
     if (retryRes.ok) {
-      return parseSuccess(retryRes, retryModel, ms);
+      return parseSuccess(retryRes, retrySpec, false, ms);
     }
     const retryErrText = await retryRes.text();
     logVoice(
       'ai:res',
       'שגיאה בניסיון החוזר מול Gemini',
-      { provider: 'gemini', model: retryModel, status: retryRes.status, ms, ok: false, snippet: retryErrText.slice(0, 160) },
+      { provider: 'gemini', model: retrySpec.id, status: retryRes.status, ms, ok: false, snippet: retryErrText.slice(0, 160) },
       'error'
     );
     throw formatHttpError('gemini', retryRes.status, retryErrText);
@@ -871,33 +920,44 @@ export async function testAiConnection(
       const candidates = orderedGeminiModels();
       let lastStatus = 503;
       let lastErrText = '';
-      for (const model of candidates) {
-        const res = await fetchWithTimeout(GEMINI_INTERACTIONS_URL, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-goog-api-key': key,
-          },
-          body: JSON.stringify({
-            model,
+      for (const spec of candidates) {
+        let includeThinking = true;
+        while (true) {
+          const payload: Record<string, unknown> = {
+            model: spec.id,
             input: 'Reply with the single word OK.',
             store: false,
-          }),
-        });
-        if (res.ok) return { ok: true };
-        const errText = await res.text();
-        if (res.status === 401 || res.status === 403) {
+          };
+          if (includeThinking) {
+            payload.generation_config = { thinking_level: spec.thinkingLevel };
+          }
+          const res = await fetchWithTimeout(GEMINI_INTERACTIONS_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-goog-api-key': key,
+            },
+            body: JSON.stringify(payload),
+          });
+          if (res.ok) return { ok: true };
+          const errText = await res.text();
+          if (res.status === 401 || res.status === 403) {
+            throw formatHttpError('gemini', res.status, errText);
+          }
+          if (includeThinking && isThinkingConfigError(res.status, errText)) {
+            includeThinking = false;
+            continue;
+          }
+          if (isFailoverGeminiStatus(res.status)) {
+            if (res.status === 503 || res.status === 429) {
+              geminiCooldownUntil.set(spec.id, Date.now() + GEMINI_COOLDOWN_MS);
+            }
+            lastStatus = res.status;
+            lastErrText = errText;
+            break;
+          }
           throw formatHttpError('gemini', res.status, errText);
         }
-        if (isFailoverGeminiStatus(res.status)) {
-          if (res.status === 503 || res.status === 429) {
-            geminiCooldownUntil.set(model, Date.now() + GEMINI_COOLDOWN_MS);
-          }
-          lastStatus = res.status;
-          lastErrText = errText;
-          continue;
-        }
-        throw formatHttpError('gemini', res.status, errText);
       }
       throw formatHttpError('gemini', lastStatus, lastErrText);
     }

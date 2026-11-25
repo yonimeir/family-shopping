@@ -214,7 +214,14 @@ export function useVoiceRecorder() {
         streamRef.current = stream;
         attachAnalyser(stream);
 
-        const rec = pickedMime ? new MediaRecorder(stream, { mimeType: pickedMime }) : new MediaRecorder(stream);
+        let rec: MediaRecorder;
+        try {
+          rec = pickedMime
+            ? new MediaRecorder(stream, { mimeType: pickedMime, audioBitsPerSecond: 24000 })
+            : new MediaRecorder(stream, { audioBitsPerSecond: 24000 });
+        } catch {
+          rec = pickedMime ? new MediaRecorder(stream, { mimeType: pickedMime }) : new MediaRecorder(stream);
+        }
         rec.ondataavailable = (ev) => {
           if (ev.data.size > 0) chunksRef.current.push(ev.data);
         };
@@ -223,7 +230,7 @@ export function useVoiceRecorder() {
         startedAtRef.current = Date.now();
         activeRef.current = true;
         setRecording(true);
-        logVoice('rec:active', 'הקלטת שמע פעילה', { mode: 'audio', mimeType: rec.mimeType || pickedMime || 'default' });
+        logVoice('rec:active', 'הקלטת שמע פעילה', { mode: 'audio', mimeType: rec.mimeType || pickedMime || 'default', bps: 24000 });
         timerRef.current = window.setInterval(() => {
           setElapsedMs(Date.now() - startedAtRef.current);
         }, 120);
