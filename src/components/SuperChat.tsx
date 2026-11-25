@@ -13,6 +13,7 @@ import {
   formatChatTime,
   getChatLastRead,
   isChatMuted,
+  isMyShopperActive,
   isShopperActive,
   itemQuestionPresets,
   setChatLastRead,
@@ -62,6 +63,7 @@ export function SuperChat({
   const lastHandledAskIdRef = useRef(0);
 
   const shopperActive = isShopperActive(state.shopper, me);
+  const iAmShopper = isMyShopperActive(state.shopper, me);
 
   useEffect(() => {
     onSheetOpenChange?.(open);
@@ -305,15 +307,31 @@ export function SuperChat({
       {open && (
         <Sheet title="צ'אט קניות" onClose={closeSheet}>
           <div className="chat-sheet-wrap">
-            {(shopperActive || muted || state.chat.length > 0) && (
+            {(shopperActive || iAmShopper || muted || state.chat.length > 0) && (
               <div className="chat-sheet-top">
                 <div className="chat-sheet-status-group">
-                  {shopperActive && state.shopper && (
+                  {shopperActive && state.shopper ? (
                     <div className="chat-presence-pill" role="status">
                       <span className="chat-live-dot" aria-hidden="true" />
                       <span>{state.shopper.name} נמצא בסופר</span>
                     </div>
-                  )}
+                  ) : iAmShopper ? (
+                    <div className="chat-presence-pill is-self" role="status">
+                      <span className="chat-live-dot" aria-hidden="true" />
+                      <span>מסומן בסופר</span>
+                      <button
+                        type="button"
+                        className="chat-presence-exit-btn"
+                        onClick={() => {
+                          haptic(10);
+                          void actions.setShopperActive(false);
+                          onToast('סטטוס "בסופר" הוסר');
+                        }}
+                      >
+                        יצאתי
+                      </button>
+                    </div>
+                  ) : null}
                   {muted && (
                     <span className="chat-muted-pill" title="התראות קוליות מושתקות במכשיר הזה">
                       <IconBellOff className="w-3.5 h-3.5 shrink-0" />

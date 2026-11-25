@@ -79,6 +79,19 @@ export function isShopperActive(
   );
 }
 
+export function isMyShopperActive(
+  shopper: ShopperPresence | null | undefined,
+  myDeviceId: string,
+  now = Date.now()
+): boolean {
+  return Boolean(
+    shopper &&
+      shopper.active &&
+      shopper.deviceId === myDeviceId &&
+      now - shopper.enteredAt < SHOPPER_STALE_MS
+  );
+}
+
 export function countUnreadMessages(chat: ChatMessage[], myDeviceId: string, lastReadAt: number): number {
   let count = 0;
   for (const msg of chat) {

@@ -6,7 +6,7 @@ import { SuperChat } from './components/SuperChat';
 import { SuperView } from './components/SuperView';
 import { VoiceAssistant } from './components/VoiceAssistant';
 import { RollingNumber, Toast, type ToastData } from './components/ui';
-import { isShopperActive, SHOPPER_REFRESH_COOLDOWN_MS } from './lib/chatHelpers';
+import { isMyShopperActive, isShopperActive, SHOPPER_STALE_MS } from './lib/chatHelpers';
 import { getDeviceId, getPendingInviteFromUrl, haptic, resolveFamilyId } from './lib/util';
 import { consumeAiKeyFromUrlHash } from './lib/voiceAi';
 import { useStore } from './lib/useStore';
@@ -192,7 +192,7 @@ export default function App() {
       const needRefresh =
         !cur ||
         !cur.active ||
-        (cur.deviceId === me && Date.now() - cur.enteredAt > SHOPPER_REFRESH_COOLDOWN_MS);
+        Date.now() - cur.enteredAt >= SHOPPER_STALE_MS;
       if (needRefresh) {
         void actions.setShopperActive(true);
       }
@@ -233,13 +233,11 @@ export default function App() {
     if (m === mode) return;
     haptic();
     setHeaderCollapsed(false);
-    if (m === 'super') {
+    if (m === 'super' && !isMyShopperActive(state.shopper, me)) {
       const now = Date.now();
       localStorage.setItem('fs:superEnteredAt', String(now));
       setEnteredAt(now);
       void actions.setShopperActive(true);
-    } else {
-      void actions.setShopperActive(false);
     }
     localStorage.setItem('fs:mode', m);
 
