@@ -338,6 +338,12 @@ function normalizeMimeType(mime: string): string {
   return clean;
 }
 
+function normalizeGeminiAudioMime(mime: string): string {
+  const clean = normalizeMimeType(mime);
+  if (clean === 'audio/mp4') return 'audio/m4a';
+  return clean;
+}
+
 function extractJsonText(raw: string): string {
   const trimmed = raw.trim();
   if (trimmed.startsWith('{')) return trimmed;
@@ -390,6 +396,8 @@ function formatHttpError(provider: AiProvider, status: number, bodyText: string)
   return new Error(`שגיאה מול ${label} (${status})${detail ? `: ${detail}` : ''}`);
 }
 
+const GEMINI_INTERACTIONS_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions';
+
 const GEMINI_MODELS = [
   'gemini-4-hydrogen',
   'gemini-3.5-flash-lite',
@@ -399,6 +407,26 @@ const GEMINI_MODELS = [
 
 const GEMINI_COOLDOWN_MS = 90_000;
 const geminiCooldownUntil = new Map<string, number>();
+
+type GeminiSchemaMode = 'modern' | 'legacy' | 'prompt_only';
+let geminiSchemaMode: GeminiSchemaMode = 'modern';
+
+function nextSchemaMode(mode: GeminiSchemaMode): GeminiSchemaMode | null {
+  if (mode === 'modern') return 'legacy';
+  if (mode === 'legacy') return 'prompt_only';
+  return null;
+}
+
+function isSchemaFieldError(status: number, errText: string): boolean {
+  if (status !== 400) return false;
+  const lower = errText.toLowerCase();
+  return (
+    lower.includes('response_format') ||
+    lower.includes('response_mime_type') ||
+    lower.includes('mime_type') ||
+    lower.includes('schema')
+  );
+}
 
 function orderedGeminiModels(): string[] {
   const now = Date.now();
@@ -454,7 +482,7 @@ async function runGeminiInteraction(params: {
   history: VoiceSessionMessage[];
 }): Promise<VoiceAiResult> {
   const audioPayload = params.audio
-    ? { data: await blobToBase64(params.audio), mimeType: normalizeMimeType(params.audio.type) }
+    ? { data: await blobToBase64(params.audio), mimeType: normalizeGeminiAudioMime(params.audio.type) }
     : null;
 
   const historyPrefix =
@@ -476,22 +504,36 @@ async function runGeminiInteraction(params: {
     return `${extraHistory}${params.text || ''}`;
   };
 
-  const sendAttempt = async (model: string, usePrevId: boolean): Promise<Response> => {
+  const sendAttempt = async (
+    model: string,
+    usePrevId: boolean,
+    schemaMode: GeminiSchemaMode
+  ): Promise<Response> => {
+    const systemInstruction =
+      schemaMode === 'prompt_only'
+        ? `${params.systemPrompt}\n\nהחזר JSON גולמי בלבד התואם בדיוק לסכמה:\n${JSON.stringify(AI_RESPONSE_SCHEMA)}`
+        : params.systemPrompt;
+
     const body: Record<string, unknown> = {
       model,
-      system_instruction: params.systemPrompt,
+      system_instruction: systemInstruction,
       input: buildInput(usePrevId),
-      response_format: {
+    };
+    if (schemaMode === 'modern') {
+      body.response_format = {
         type: 'text',
         mime_type: 'application/json',
         schema: AI_RESPONSE_SCHEMA,
-      },
-    };
+      };
+    } else if (schemaMode === 'legacy') {
+      body.response_mime_type = 'application/json';
+      body.response_format = AI_RESPONSE_SCHEMA;
+    }
     if (usePrevId && params.previousInteractionId) {
       body.previous_interaction_id = params.previousInteractionId;
     }
 
-    return fetch('https://generativelanguage.googleapis.com/v1/interactions', {
+    return fetch(GEMINI_INTERACTIONS_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -515,31 +557,44 @@ async function runGeminiInteraction(params: {
   for (let idx = 0; idx < candidates.length; idx++) {
     const model = candidates[idx];
     const usePrevId = Boolean(params.previousInteractionId && model === GEMINI_MODELS[0] && idx === 0);
-    const res = await sendAttempt(model, usePrevId);
+    let activeSchemaMode: GeminiSchemaMode = geminiSchemaMode;
 
-    if (res.ok) {
-      return parseSuccess(res, model);
-    }
+    while (true) {
+      const res = await sendAttempt(model, usePrevId, activeSchemaMode);
 
-    const errText = await res.text();
-    if (res.status === 401 || res.status === 403) {
+      if (res.ok) {
+        geminiSchemaMode = activeSchemaMode;
+        return parseSuccess(res, model);
+      }
+
+      const errText = await res.text();
+      if (res.status === 401 || res.status === 403) {
+        throw formatHttpError('gemini', res.status, errText);
+      }
+      if (isSchemaFieldError(res.status, errText)) {
+        const next = nextSchemaMode(activeSchemaMode);
+        if (next) {
+          geminiSchemaMode = next;
+          activeSchemaMode = next;
+          continue;
+        }
+      }
+      if (isFailoverGeminiStatus(res.status)) {
+        if (res.status === 503 || res.status === 429) {
+          geminiCooldownUntil.set(model, Date.now() + GEMINI_COOLDOWN_MS);
+        }
+        lastStatus = res.status;
+        lastErrText = errText;
+        break;
+      }
       throw formatHttpError('gemini', res.status, errText);
     }
-    if (isFailoverGeminiStatus(res.status)) {
-      if (res.status === 503 || res.status === 429) {
-        geminiCooldownUntil.set(model, Date.now() + GEMINI_COOLDOWN_MS);
-      }
-      lastStatus = res.status;
-      lastErrText = errText;
-      continue;
-    }
-    throw formatHttpError('gemini', res.status, errText);
   }
 
   if (lastStatus === 503 || lastStatus === 502 || lastStatus === 504) {
     await new Promise((r) => setTimeout(r, 800));
     const retryModel = 'gemini-3.5-flash-lite';
-    const retryRes = await sendAttempt(retryModel, false);
+    const retryRes = await sendAttempt(retryModel, false, geminiSchemaMode);
     if (retryRes.ok) {
       return parseSuccess(retryRes, retryModel);
     }
@@ -728,7 +783,7 @@ export async function testAiConnection(
       let lastStatus = 503;
       let lastErrText = '';
       for (const model of candidates) {
-        const res = await fetch('https://generativelanguage.googleapis.com/v1/interactions', {
+        const res = await fetch(GEMINI_INTERACTIONS_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

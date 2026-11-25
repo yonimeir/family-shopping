@@ -10,10 +10,8 @@ import {
   PROVIDER_META,
   runVoiceCommand,
   shouldRequireConfirmation,
-  type AiProvider,
   type VoiceAction,
   type VoiceAiResult,
-  type VoiceSessionMessage,
 } from '../lib/voiceAi';
 import { formatQty } from '../lib/util';
 import type { AppState, ListEntry } from '../types';
@@ -21,12 +19,10 @@ import {
   IconCheck,
   IconChevronUp,
   IconClose,
-  IconKey,
   IconLock,
   IconMic,
-  IconSend,
   IconSparkles,
-  IconTrash,
+  IconStop,
   IconUndo,
 } from './Icons';
 import { RollingNumber, Sheet } from './ui';
@@ -49,17 +45,13 @@ interface PendingPlan {
   items: ChecklistItem[];
 }
 
-interface ThreadEntry {
+interface VoiceOutcome {
   id: number;
-  role: 'user' | 'assistant' | 'error';
-  text: string;
-}
-
-interface SummaryCardData {
-  id: number;
-  title: string;
+  transcript: string;
+  reply: string;
   chips: string[];
-  undo: () => void;
+  undo?: () => void;
+  error?: string;
 }
 
 interface Props {
@@ -74,13 +66,6 @@ interface Props {
   otherSheetOpen: boolean;
   onVoiceSheetChange?: (open: boolean) => void;
 }
-
-const QUICK_PROMPTS = [
-  { label: 'חצי קילו עגבניות וחלב', size: 'wide' },
-  { label: 'מצרכים לשקשוקה', size: 'normal' },
-  { label: 'תעבור למצב סופר', size: 'normal' },
-  { label: 'האם שמנו ביצים?', size: 'wide' },
-] as const;
 
 function formatElapsed(ms: number): string {
   const sec = Math.max(0, Math.floor(ms / 1000));
@@ -159,20 +144,14 @@ export function VoiceAssistant({
   onVoiceSheetChange,
 }: Props) {
   const recorder = useVoiceRecorder();
-  const { cancel: cancelRecorder } = recorder;
+  const { start: startRecorder, stop: stopRecorder, cancel: cancelRecorder, clearError: clearRecorderError } = recorder;
   const [holdPhase, setHoldPhase] = useState<HoldPhase>('idle');
+  const holdPhaseRef = useRef<HoldPhase>('idle');
   const [sheetOpen, setSheetOpenState] = useState(false);
-  const [provider, setProvider] = useState<AiProvider>(() => getAiProvider());
-  const [hasKey, setHasKey] = useState<boolean>(() => hasActiveAiKey());
-  const [textInput, setTextInput] = useState('');
-  const [thread, setThread] = useState<ThreadEntry[]>([]);
+  const [outcome, setOutcome] = useState<VoiceOutcome | null>(null);
   const [pendingPlan, setPendingPlan] = useState<PendingPlan | null>(null);
-  const [summaryCard, setSummaryCard] = useState<SummaryCardData | null>(null);
-  const [thinkingLabel, setThinkingLabel] = useState('מפענח...');
+  const [thinkingLabel, setThinkingLabel] = useState('מקשיב ומפענח...');
 
-  const sessionHistoryRef = useRef<VoiceSessionMessage[]>([]);
-  const interactionIdRef = useRef<string | undefined>(undefined);
-  const summaryTimerRef = useRef<number | null>(null);
   const hudRef = useRef<HTMLDivElement>(null);
   const lockPillRef = useRef<HTMLDivElement>(null);
 
@@ -181,15 +160,16 @@ export function VoiceAssistant({
     holdEngaged: false,
     locked: false,
     cancelled: false,
+    stopTap: false,
     pointerId: -1,
     startX: 0,
     startY: 0,
     holdTimer: 0,
   });
 
-  const refreshKeyState = useCallback(() => {
-    setProvider(getAiProvider());
-    setHasKey(hasActiveAiKey());
+  const updateHoldPhase = useCallback((next: HoldPhase) => {
+    holdPhaseRef.current = next;
+    setHoldPhase(next);
   }, []);
 
   const setSheetOpen = useCallback(
@@ -200,56 +180,60 @@ export function VoiceAssistant({
     [onVoiceSheetChange]
   );
 
-  // Sync provider/key state whenever Settings closes, Sheet opens, or URL hash imports a key
+  // Clean up any leftover recorder session when settings or another modal opens
   useEffect(() => {
-    refreshKeyState();
-  }, [otherSheetOpen, sheetOpen, refreshKeyState]);
+    if (otherSheetOpen && (holdPhaseRef.current === 'holding' || holdPhaseRef.current === 'locked')) {
+      cancelRecorder();
+      updateHoldPhase('idle');
+    }
+  }, [otherSheetOpen, cancelRecorder, updateHoldPhase]);
 
   useEffect(() => {
-    window.addEventListener(AI_KEY_UPDATED_EVENT, refreshKeyState);
-    return () => window.removeEventListener(AI_KEY_UPDATED_EVENT, refreshKeyState);
-  }, [refreshKeyState]);
+    const syncAvailability = () => {
+      if (!hasActiveAiKey() && (holdPhaseRef.current === 'holding' || holdPhaseRef.current === 'locked')) {
+        cancelRecorder();
+        updateHoldPhase('idle');
+      }
+    };
+    window.addEventListener(AI_KEY_UPDATED_EVENT, syncAvailability);
+    return () => window.removeEventListener(AI_KEY_UPDATED_EVENT, syncAvailability);
+  }, [cancelRecorder, updateHoldPhase]);
 
   const closeSheet = useCallback(() => {
     cancelRecorder();
-    setHoldPhase('idle');
+    updateHoldPhase('idle');
     setSheetOpen(false);
     setPendingPlan(null);
-    setThread([]);
-    setTextInput('');
-    sessionHistoryRef.current = [];
-    interactionIdRef.current = undefined;
-  }, [cancelRecorder, setSheetOpen]);
+    setOutcome(null);
+  }, [cancelRecorder, setSheetOpen, updateHoldPhase]);
+
+  const startHandsFreeOnDock = useCallback(async () => {
+    if (holdPhaseRef.current === 'thinking' || holdPhaseRef.current === 'locked') return;
+    if (!hasActiveAiKey()) {
+      onToast('הדביקו מפתח API בהגדרות כדי להפעיל הקלטה');
+      onOpenAiSettings();
+      return;
+    }
+    setSheetOpen(false);
+    setOutcome(null);
+    setPendingPlan(null);
+    const recMode = PROVIDER_META[getAiProvider()].supportsNativeAudio ? 'audio' : 'speech';
+    const ok = await startRecorder(recMode);
+    if (ok) {
+      haptic(14);
+      updateHoldPhase('locked');
+    } else {
+      clearRecorderError();
+      updateHoldPhase('idle');
+      onToast('לא הצלחתי להפעיל את המיקרופון — בדקו הרשאה בהגדרות');
+    }
+  }, [clearRecorderError, onOpenAiSettings, onToast, setSheetOpen, startRecorder, updateHoldPhase]);
 
   // Triggered when app launched from `?voice=1` PWA shortcut
   useEffect(() => {
     if (autoOpenTrigger <= 0) return;
-    refreshKeyState();
-    setSheetOpen(true);
-    if (!hasActiveAiKey()) return;
-
-    let cancelled = false;
-    const recMode = PROVIDER_META[getAiProvider()].supportsNativeAudio ? 'audio' : 'speech';
-    void recorder.start(recMode).then((ok) => {
-      if (cancelled) return;
-      if (ok) {
-        setHoldPhase('locked');
-      } else {
-        recorder.clearError();
-      }
-    });
-    return () => {
-      cancelled = true;
-    };
+    void startHandsFreeOnDock();
   }, [autoOpenTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const showSummaryWithTimer = useCallback((card: SummaryCardData) => {
-    if (summaryTimerRef.current !== null) window.clearTimeout(summaryTimerRef.current);
-    setSummaryCard(card);
-    summaryTimerRef.current = window.setTimeout(() => {
-      setSummaryCard(null);
-    }, 6800);
-  }, []);
 
   const buildChecklistItems = useCallback(
     (result: VoiceAiResult): ChecklistItem[] => {
@@ -450,12 +434,13 @@ export function VoiceAssistant({
     async ({ audio, text }: { audio?: Blob; text?: string }) => {
       const currentProv = getAiProvider();
       if (!getAiKey(currentProv)) {
-        setHoldPhase('idle');
-        setSheetOpen(true);
+        updateHoldPhase('idle');
+        onToast('הדביקו מפתח API בהגדרות כדי להפעיל הקלטה');
+        onOpenAiSettings();
         return;
       }
 
-      setHoldPhase('thinking');
+      updateHoldPhase('thinking');
       setThinkingLabel(audio ? 'מקשיב ומפענח...' : 'מבין פקודה...');
 
       try {
@@ -464,101 +449,68 @@ export function VoiceAssistant({
           currentMode: mode,
           audio,
           text,
-          previousInteractionId: interactionIdRef.current,
-          history: sessionHistoryRef.current,
+          history: [],
           providerOverride: currentProv,
         });
 
-        if (result.interactionId) interactionIdRef.current = result.interactionId;
-        const userLog = result.transcript || text || '(פקודה קולית)';
-        sessionHistoryRef.current = [
-          ...sessionHistoryRef.current.slice(-6),
-          { role: 'user', text: userLog },
-          { role: 'assistant', text: result.reply },
-        ];
-
         applyUiCommand(result.uiCommand);
-
+        const transcript = result.transcript || text?.trim() || '';
         const needsConfirm = shouldRequireConfirmation(result);
 
         if (!needsConfirm && result.actions.length === 0) {
-          // Pure navigation/filter or Q&A
-          if (result.uiCommand && !sheetOpen) {
-            onToast(result.reply);
-          } else {
-            setThread((prev) => [
-              ...prev,
-              { id: Date.now(), role: 'user', text: userLog },
-              { id: Date.now() + 1, role: 'assistant', text: result.reply },
-            ]);
-            setPendingPlan(null);
-            setSheetOpen(true);
-          }
-          setHoldPhase('idle');
+          setPendingPlan(null);
+          setOutcome({
+            id: Date.now(),
+            transcript,
+            reply: result.reply,
+            chips: [],
+          });
+          updateHoldPhase('idle');
+          setSheetOpen(true);
           return;
         }
 
         if (!needsConfirm) {
-          // Up to 4 existing-item additions -> immediate execute + undoable summary
-          const { chips, undo, appliedCount } = executeActionsBatch(result.actions);
-          if (appliedCount > 0 && undo) {
-            if (sheetOpen) {
-              setThread((prev) => [
-                ...prev,
-                { id: Date.now(), role: 'user', text: userLog },
-                { id: Date.now() + 1, role: 'assistant', text: `${result.reply} (${chips.join(' · ')})` },
-              ]);
-              onToast(`נוספו ${appliedCount} מוצרים`, () => {
-                undo();
-                onToast('הפעולה בוטלה');
-              });
-            } else {
-              showSummaryWithTimer({
-                id: Date.now(),
-                title: appliedCount === 1 ? 'נוסף לרשימה' : `נוספו ${appliedCount} מוצרים`,
-                chips,
-                undo: () => {
-                  undo();
-                  setSummaryCard(null);
-                  onToast('הפעולה בוטלה ↩');
-                },
-              });
-            }
-          } else {
-            setThread((prev) => [
-              ...prev,
-              { id: Date.now(), role: 'user', text: userLog },
-              { id: Date.now() + 1, role: 'assistant', text: result.reply },
-            ]);
-            setSheetOpen(true);
-          }
-          setHoldPhase('idle');
+          const { chips, undo } = executeActionsBatch(result.actions);
+          setPendingPlan(null);
+          setOutcome({
+            id: Date.now(),
+            transcript,
+            reply: result.reply,
+            chips,
+            undo: undo ?? undefined,
+          });
+          updateHoldPhase('idle');
+          setSheetOpen(true);
           return;
         }
 
-        // 5+ items, recipes/meals, new catalog items, removals, updates, clear list -> confirmation checklist
         const checklist = buildChecklistItems(result);
-        setThread((prev) => [
-          ...prev,
-          { id: Date.now(), role: 'user', text: userLog },
-          { id: Date.now() + 1, role: 'assistant', text: result.reply },
-        ]);
+        setOutcome({
+          id: Date.now(),
+          transcript,
+          reply: result.reply,
+          chips: [],
+        });
         setPendingPlan({
           id: Date.now(),
           title: result.isRecipeOrMeal ? 'אישור מצרכים מהרשימה' : 'אישור עדכונים לפני ביצוע',
           items: checklist,
         });
+        updateHoldPhase('idle');
         setSheetOpen(true);
-        setHoldPhase('idle');
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'אירעה שגיאה בעיבוד הפקודה.';
-        setThread((prev) => [
-          ...prev,
-          ...(text ? [{ id: Date.now(), role: 'user' as const, text }] : []),
-          { id: Date.now() + 1, role: 'error', text: msg },
-        ]);
+        setPendingPlan(null);
+        setOutcome({
+          id: Date.now(),
+          transcript: text?.trim() || '',
+          reply: '',
+          chips: [],
+          error: msg,
+        });
+        updateHoldPhase('idle');
         setSheetOpen(true);
-        setHoldPhase('idle');
       }
     },
     [
@@ -566,40 +518,57 @@ export function VoiceAssistant({
       buildChecklistItems,
       executeActionsBatch,
       mode,
+      onOpenAiSettings,
       onToast,
       setSheetOpen,
-      sheetOpen,
-      showSummaryWithTimer,
       state,
+      updateHoldPhase,
     ]
   );
 
   const stopAndProcess = useCallback(async () => {
-    const res = await recorder.stop();
+    const res = await stopRecorder();
     if (!res.audio && !res.transcript) {
-      setHoldPhase('idle');
+      updateHoldPhase('idle');
       return;
     }
     if (res.audio && res.audio.size < 900) {
-      setHoldPhase('idle');
+      updateHoldPhase('idle');
       onToast('ההקלטה קצרה מדי — נסו שוב');
       return;
     }
     await runCommand({ audio: res.audio, text: res.transcript });
-  }, [onToast, recorder, runCommand]);
+  }, [onToast, runCommand, stopRecorder, updateHoldPhase]);
 
-  // ---------- WhatsApp FAB Pointer Handlers ----------
+  // ---------- Floating Dock FAB Pointer Handlers ----------
   const onFabPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
-    if (holdPhase === 'thinking' || e.button !== 0) return;
+    if (holdPhaseRef.current === 'thinking' || e.button !== 0) return;
     e.stopPropagation();
 
     const g = gestureRef.current;
     window.clearTimeout(g.holdTimer);
+
+    if (holdPhaseRef.current === 'locked') {
+      gestureRef.current = {
+        watching: true,
+        holdEngaged: false,
+        locked: false,
+        cancelled: false,
+        stopTap: true,
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        holdTimer: 0,
+      };
+      return;
+    }
+
     gestureRef.current = {
       watching: true,
       holdEngaged: false,
       locked: false,
       cancelled: false,
+      stopTap: false,
       pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
@@ -612,38 +581,33 @@ export function VoiceAssistant({
       /* ignore synthetic */
     }
 
+    if (!hasActiveAiKey()) return;
+
     gestureRef.current.holdTimer = window.setTimeout(async () => {
       const curr = gestureRef.current;
       if (!curr.watching || curr.cancelled || curr.locked) return;
 
-      if (!hasActiveAiKey()) {
-        curr.watching = false;
-        curr.cancelled = true;
-        haptic(12);
-        setSheetOpen(true);
-        return;
-      }
-
       curr.holdEngaged = true;
-      setSummaryCard(null);
-      setHoldPhase('holding');
+      updateHoldPhase('holding');
       haptic(16);
       hudRef.current?.style.setProperty('--cancel-pull', '0px');
       lockPillRef.current?.style.setProperty('--lock-pull', '0px');
 
       const recMode = PROVIDER_META[getAiProvider()].supportsNativeAudio ? 'audio' : 'speech';
-      const started = await recorder.start(recMode);
+      const started = await startRecorder(recMode);
       if (!started) {
         curr.cancelled = true;
-        setHoldPhase('idle');
-        setSheetOpen(true);
+        curr.watching = false;
+        clearRecorderError();
+        updateHoldPhase('idle');
+        onToast('לא הצלחתי להפעיל את המיקרופון — בדקו הרשאה בהגדרות');
       }
-    }, 180);
+    }, 200);
   };
 
   const onFabPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
     const g = gestureRef.current;
-    if (!g.watching || g.cancelled || g.locked) return;
+    if (!g.watching || g.stopTap || g.cancelled || g.locked) return;
 
     const dx = e.clientX - g.startX;
     const dy = e.clientY - g.startY;
@@ -663,16 +627,15 @@ export function VoiceAssistant({
     if (upPull >= 46 && upPull > sidePull) {
       g.locked = true;
       haptic(22);
-      setHoldPhase('locked');
-      setSheetOpen(true);
+      updateHoldPhase('locked');
       return;
     }
 
     if (sidePull >= 72) {
       g.cancelled = true;
       haptic(12);
-      recorder.cancel();
-      setHoldPhase('idle');
+      cancelRecorder();
+      updateHoldPhase('idle');
     }
   };
 
@@ -693,8 +656,13 @@ export function VoiceAssistant({
     if (e.type === 'pointercancel') {
       if (g.holdEngaged) {
         cancelRecorder();
-        setHoldPhase('idle');
+        updateHoldPhase('idle');
       }
+      return;
+    }
+
+    if (g.stopTap) {
+      void stopAndProcess();
       return;
     }
 
@@ -703,17 +671,15 @@ export function VoiceAssistant({
     if (!g.holdEngaged) {
       if (e.type === 'pointerup') {
         window.requestAnimationFrame(() => {
-          refreshKeyState();
-          setSheetOpen(true);
+          void startHandsFreeOnDock();
         });
       }
-      setHoldPhase('idle');
       return;
     }
 
     if (recorder.elapsedMs < 350) {
-      recorder.cancel();
-      setHoldPhase('idle');
+      cancelRecorder();
+      updateHoldPhase('idle');
       onToast('החזיקו עוד רגע כדי להקליט, או לחצו לחיצה קצרה לפתיחה');
       return;
     }
@@ -737,7 +703,6 @@ export function VoiceAssistant({
     const selected = pendingPlan.items.filter((i) => i.checked).map((i) => i.action);
     if (selected.length === 0) return;
     const { undo, appliedCount } = executeActionsBatch(selected);
-    setPendingPlan(null);
     closeSheet();
     if (undo) {
       onToast(`בוצעו ${appliedCount} עדכונים`, () => {
@@ -749,74 +714,11 @@ export function VoiceAssistant({
     }
   };
 
-  const submitTypedCommand = async (raw?: string) => {
-    const clean = (raw ?? textInput).trim();
-    if (!clean || holdPhase === 'thinking') return;
-    setTextInput('');
-    await runCommand({ text: clean });
-  };
-
-  const startLockedInSheet = async () => {
-    if (!hasActiveAiKey()) {
-      onOpenAiSettings();
-      return;
-    }
-    const recMode = PROVIDER_META[getAiProvider()].supportsNativeAudio ? 'audio' : 'speech';
-    const ok = await recorder.start(recMode);
-    if (ok) {
-      haptic(14);
-      setHoldPhase('locked');
-    }
-  };
-
   const checkedCount = pendingPlan ? pendingPlan.items.filter((i) => i.checked).length : 0;
-  const activeMeta = PROVIDER_META[provider];
 
   return createPortal(
     <>
-      {/* 1. Floating Summary Card for quick 1-4 existing item additions */}
-      {summaryCard && !sheetOpen && (
-        <div
-          key={summaryCard.id}
-          className={`voice-summary-card ${mode === 'super' ? 'is-super' : ''}`}
-          onPointerEnter={() => {
-            if (summaryTimerRef.current !== null) window.clearTimeout(summaryTimerRef.current);
-          }}
-          role="status"
-        >
-          <div className="voice-summary-head">
-            <span className="voice-summary-badge" aria-hidden="true">
-              <IconCheck className="w-3.5 h-3.5" />
-            </span>
-            <span className="voice-summary-title">{summaryCard.title}</span>
-            <button
-              type="button"
-              className="voice-summary-undo"
-              onClick={summaryCard.undo}
-            >
-              <IconUndo className="w-3.5 h-3.5" />
-              <span>בטל הכל</span>
-            </button>
-            <button
-              type="button"
-              className="voice-summary-close"
-              onClick={() => setSummaryCard(null)}
-              aria-label="סגירת סיכום"
-            >
-              <IconClose className="w-3.5 h-3.5" />
-            </button>
-          </div>
-          <div className="voice-summary-chips">
-            {summaryCard.chips.map((c, idx) => (
-              <span key={idx} className="voice-summary-chip">
-                {c}
-              </span>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* 2. Floating Hold-to-Record HUD + Lock Capsule + Persistent FAB */}
+      {/* 1. Floating Dock Recorder (Hold-to-Record OR Tap to Record/Stop) */}
       {!otherSheetOpen && !sheetOpen && (
         <div className={`voice-fab-dock ${mode === 'super' ? 'is-super' : ''}`}>
           {holdPhase === 'holding' && (
@@ -834,6 +736,25 @@ export function VoiceAssistant({
             </>
           )}
 
+          {holdPhase === 'locked' && (
+            <div className="voice-hold-hud is-locked" role="status">
+              <span className="voice-rec-dot" aria-hidden="true" />
+              <span className="voice-rec-timer tabular-nums">{formatElapsed(recorder.elapsedMs)}</span>
+              <LiveWaveform analyserRef={recorder.analyserRef} active bars={10} />
+              <button
+                type="button"
+                className="voice-dock-cancel"
+                onClick={() => {
+                  cancelRecorder();
+                  updateHoldPhase('idle');
+                }}
+                aria-label="ביטול הקלטה"
+              >
+                <IconClose className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {holdPhase === 'thinking' && (
             <div className="voice-thinking-pill" role="status">
               <IconSparkles className="w-4 h-4 text-emerald-600 animate-spin" />
@@ -843,246 +764,129 @@ export function VoiceAssistant({
 
           <button
             type="button"
-            className={`voice-fab-btn ${holdPhase === 'holding' ? 'is-holding' : ''} ${holdPhase === 'thinking' ? 'is-thinking' : ''}`}
+            className={`voice-fab-btn ${holdPhase === 'holding' ? 'is-holding' : ''} ${holdPhase === 'locked' ? 'is-recording' : ''} ${holdPhase === 'thinking' ? 'is-thinking' : ''}`}
             onPointerDown={onFabPointerDown}
             onPointerMove={onFabPointerMove}
             onPointerUp={onFabPointerEnd}
             onPointerCancel={onFabPointerEnd}
             onClick={(e) => {
-              if (e.detail === 0 && holdPhase !== 'thinking') {
-                refreshKeyState();
-                setSheetOpen(true);
+              if (e.detail !== 0 || holdPhaseRef.current === 'thinking') return;
+              if (holdPhaseRef.current === 'locked') {
+                void stopAndProcess();
+              } else {
+                void startHandsFreeOnDock();
               }
             }}
             onContextMenu={(e) => e.preventDefault()}
-            aria-label="עוזר קולי (החזיקו להקלטה או לחצו לפתיחה)"
-            title="החזיקו להקלטה · גררו מעלה לנעילה"
+            aria-label={holdPhase === 'locked' ? 'עצור הקלטה ושלח' : 'הקלטת פקודה קולית'}
+            title={holdPhase === 'locked' ? 'לחצו לעצירה ושליחה' : 'החזיקו או לחצו להקלטה'}
           >
-            <IconMic className="w-6 h-6" />
+            {holdPhase === 'locked' ? <IconStop className="w-5 h-5" /> : <IconMic className="w-6 h-6" />}
           </button>
         </div>
       )}
 
-      {/* 3. Full Voice Assistant Sheet (Vaul swipeable) */}
+      {/* 2. Post-Recording Result Sheet (Only opens after recording finishes) */}
       {sheetOpen && (
-        <Sheet title="עוזר קולי חכם" onClose={closeSheet}>
+        <Sheet title="תוצאת העוזר הקולי" onClose={closeSheet}>
           <div className="voice-sheet-wrap">
-            <div className="voice-sheet-meta-bar">
-              <span className="voice-provider-pill">
-                <span className={`voice-provider-dot ${hasKey ? 'is-ready' : ''}`} />
-                <span>{activeMeta.shortLabel}</span>
-              </span>
-              <button
-                type="button"
-                className="voice-settings-shortcut"
-                onClick={() => {
-                  closeSheet();
-                  onOpenAiSettings();
-                }}
-              >
-                <IconKey className="w-3.5 h-3.5" />
-                <span>{hasKey ? 'החלפת ספק / מפתח' : 'הגדרת מפתח API'}</span>
-              </button>
-            </div>
-
-            {!hasKey ? (
-              <div className="voice-setup-card">
-                <div className="voice-setup-badge">
-                  <IconSparkles className="w-5 h-5" />
-                </div>
-                <h3 className="voice-setup-title">מדברים, והאפליקציה מסדרת את הקניות</h3>
-                <p className="voice-setup-desc">
-                  חברו מפתח אישי חינמי של <strong>Gemini</strong> (או מפתח של <strong>ChatGPT</strong> /{' '}
-                  <strong>Claude</strong>) פעם אחת בהגדרות — והעוזר יוסיף מוצרים, יפרק מתכונים וישלוט ברשימה.
-                </p>
-                <button
-                  type="button"
-                  className="btn-primary voice-setup-btn"
-                  onClick={() => {
-                    closeSheet();
-                    onOpenAiSettings();
-                  }}
-                >
-                  <IconKey className="w-4 h-4" />
-                  <span>להגדרת מפתח API</span>
-                </button>
-              </div>
+            {outcome?.error ? (
+              <div className="voice-bubble is-error">{outcome.error}</div>
             ) : (
               <>
-                {(recorder.error || thread.length > 0) && (
-                  <div className="voice-thread">
-                    {recorder.error && (
-                      <div className="voice-bubble is-error">{recorder.error}</div>
+                {outcome?.transcript && (
+                  <div className="voice-out-block">
+                    <span className="voice-out-label">מה הבנתי</span>
+                    <p className="voice-out-transcript">“{outcome.transcript}”</p>
+                  </div>
+                )}
+
+                {pendingPlan ? (
+                  <>
+                    {outcome?.reply && outcome.reply !== outcome.transcript && (
+                      <p className="voice-out-reply">{outcome.reply}</p>
                     )}
-                    {thread.map((msg) => (
-                      <div
-                        key={msg.id}
-                        className={`voice-bubble ${
-                          msg.role === 'user'
-                            ? 'is-user'
-                            : msg.role === 'error'
-                              ? 'is-error'
-                              : 'is-assistant'
-                        }`}
-                      >
-                        {msg.text}
+                    <div className="voice-checklist-card">
+                      <div className="voice-checklist-head">
+                        <span>{pendingPlan.title}</span>
+                        <span className="voice-checklist-count tabular-nums">
+                          {checkedCount}/{pendingPlan.items.length} נבחרו
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                )}
-
-                {thread.length === 0 && !pendingPlan && holdPhase !== 'locked' && (
-                  <div className="voice-empty-guide">
-                    <p className="voice-empty-hint">
-                      החזיקו את המיקרופון מהמסך הראשי כמו בוואטסאפ, או נסו פקודה מהירה:
-                    </p>
-                    <div className="voice-bento-prompts">
-                      {QUICK_PROMPTS.map((q) => (
-                        <button
-                          key={q.label}
-                          type="button"
-                          className={`voice-prompt-tile ${q.size === 'wide' ? 'is-wide' : ''}`}
-                          onClick={() => void submitTypedCommand(q.label)}
-                        >
-                          {q.label}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {holdPhase === 'thinking' && (
-                  <div className="voice-sheet-thinking">
-                    <IconSparkles className="w-4 h-4 text-emerald-600 animate-spin" />
-                    <span>{thinkingLabel}</span>
-                  </div>
-                )}
-
-                {pendingPlan && (
-                  <div className="voice-checklist-card">
-                    <div className="voice-checklist-head">
-                      <span>{pendingPlan.title}</span>
-                      <span className="voice-checklist-count tabular-nums">
-                        {checkedCount}/{pendingPlan.items.length} נבחרו
-                      </span>
-                    </div>
-                    <div className="voice-checklist-rows">
-                      {pendingPlan.items.map((item) => (
-                        <button
-                          key={item.key}
-                          type="button"
-                          role="checkbox"
-                          aria-checked={item.checked}
-                          className={`voice-check-row ${item.checked ? 'is-checked' : ''}`}
-                          onClick={() => toggleChecklistItem(item.key)}
-                        >
-                          <span className="voice-check-box" aria-hidden="true">
-                            <IconCheck className="voice-check-svg" />
-                          </span>
-                          <span className="voice-check-text">
-                            <span className="voice-check-title">{item.title}</span>
-                            <span className="voice-check-meta">{item.meta}</span>
-                          </span>
-                          {item.badgeText && (
-                            <span className={`voice-check-badge tone-${item.badgeTone || 'inlist'}`}>
-                              {item.badgeText}
+                      <div className="voice-checklist-rows">
+                        {pendingPlan.items.map((item) => (
+                          <button
+                            key={item.key}
+                            type="button"
+                            role="checkbox"
+                            aria-checked={item.checked}
+                            className={`voice-check-row ${item.checked ? 'is-checked' : ''}`}
+                            onClick={() => toggleChecklistItem(item.key)}
+                          >
+                            <span className="voice-check-box" aria-hidden="true">
+                              <IconCheck className="voice-check-svg" />
                             </span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="voice-checklist-actions">
-                      <button
-                        type="button"
-                        className="btn-primary voice-confirm-btn"
-                        disabled={checkedCount === 0}
-                        onClick={confirmPendingPlan}
-                      >
-                        <span>
-                          אשר ובצע (<RollingNumber value={checkedCount} />)
-                        </span>
-                      </button>
-                      <button
-                        type="button"
-                        className="btn-ghost"
-                        onClick={() => setPendingPlan(null)}
-                      >
-                        בטל
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Composer / Locked Continuous Recorder */}
-                {holdPhase === 'locked' ? (
-                  <div className="voice-locked-bar">
-                    <button
-                      type="button"
-                      className="icon-btn voice-locked-cancel"
-                      onClick={() => {
-                        recorder.cancel();
-                        setHoldPhase('idle');
-                      }}
-                      aria-label="ביטול הקלטה"
-                    >
-                      <IconTrash className="w-4 h-4 text-red-600" />
-                    </button>
-                    <div className="voice-locked-center">
-                      <div className="voice-locked-top">
-                        <span className="voice-rec-dot" aria-hidden="true" />
-                        <span className="voice-rec-timer tabular-nums">
-                          {formatElapsed(recorder.elapsedMs)}
-                        </span>
-                        <span className="voice-locked-label">מוקלט ברצף</span>
+                            <span className="voice-check-text">
+                              <span className="voice-check-title">{item.title}</span>
+                              <span className="voice-check-meta">{item.meta}</span>
+                            </span>
+                            {item.badgeText && (
+                              <span className={`voice-check-badge tone-${item.badgeTone || 'inlist'}`}>
+                                {item.badgeText}
+                              </span>
+                            )}
+                          </button>
+                        ))}
                       </div>
-                      <LiveWaveform analyserRef={recorder.analyserRef} active bars={14} />
-                      {recorder.liveTranscript && (
-                        <div className="voice-live-transcript">{recorder.liveTranscript}</div>
+                      <div className="voice-checklist-actions">
+                        <button
+                          type="button"
+                          className="btn-primary voice-confirm-btn"
+                          disabled={checkedCount === 0}
+                          onClick={confirmPendingPlan}
+                        >
+                          <span>
+                            אשר ובצע (<RollingNumber value={checkedCount} />)
+                          </span>
+                        </button>
+                        <button type="button" className="btn-ghost" onClick={closeSheet}>
+                          בטל
+                        </button>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  outcome && (
+                    <div className="voice-out-block">
+                      <span className="voice-out-label">
+                        {outcome.chips.length > 0 ? 'מה בוצע' : 'תשובה'}
+                      </span>
+                      <p className="voice-out-reply">{outcome.reply}</p>
+                      {outcome.chips.length > 0 && (
+                        <div className="voice-out-chips">
+                          {outcome.chips.map((c, idx) => (
+                            <span key={idx} className="voice-out-chip">
+                              {c}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {outcome.undo && (
+                        <button
+                          type="button"
+                          className="voice-out-undo"
+                          onClick={() => {
+                            outcome.undo?.();
+                            closeSheet();
+                            onToast('הפעולה בוטלה ↩');
+                          }}
+                        >
+                          <IconUndo className="w-3.5 h-3.5" />
+                          <span>בטל פעולה</span>
+                        </button>
                       )}
                     </div>
-                    <button
-                      type="button"
-                      className="voice-locked-send"
-                      onClick={() => void stopAndProcess()}
-                      aria-label="שליחת הקלטה"
-                    >
-                      <IconSend className="w-5 h-5" />
-                    </button>
-                  </div>
-                ) : (
-                  <form
-                    className="voice-composer"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void submitTypedCommand();
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className="voice-composer-mic"
-                      disabled={holdPhase === 'thinking'}
-                      onClick={() => void startLockedInSheet()}
-                      aria-label="הקלטה רצופה"
-                      title="הקלטה"
-                    >
-                      <IconMic className="w-5 h-5" />
-                    </button>
-                    <input
-                      type="text"
-                      value={textInput}
-                      onChange={(e) => setTextInput(e.target.value)}
-                      placeholder="הקלידו או לחצו על המיקרופון…"
-                      aria-label="פקודה לעוזר הקולי"
-                    />
-                    <button
-                      type="submit"
-                      className="voice-composer-send"
-                      disabled={!textInput.trim() || holdPhase === 'thinking'}
-                      aria-label="שלח פקודה"
-                    >
-                      <IconSend className="w-4 h-4" />
-                    </button>
-                  </form>
+                  )
                 )}
               </>
             )}
