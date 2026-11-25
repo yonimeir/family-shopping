@@ -26,6 +26,13 @@ import {
   type AiProvider,
 } from '../lib/voiceAi';
 import { IconCheck, IconCopy, IconEye, IconEyeOff, IconKey, IconShare, IconSparkles } from './Icons';
+import {
+  clearVoiceLogs,
+  formatVoiceLogsText,
+  getVoiceLogs,
+  VOICE_LOGS_EVENT,
+  type VoiceLogEntry,
+} from '../lib/voiceLog';
 import { Sheet } from './ui';
 import fridgeBadge from '../assets/fridge-retro-badge.png';
 
@@ -303,9 +310,17 @@ export function SettingsSheet({
   const [showKey, setShowKey] = useState(false);
   const [testingAi, setTestingAi] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [voiceLogs, setVoiceLogs] = useState<VoiceLogEntry[]>(() => getVoiceLogs());
   const aiBlockRef = useRef<HTMLElement>(null);
   const cats = sortedCategories(state.categories);
   const link = familyLink(familyId);
+
+  useEffect(() => {
+    const syncLogs = () => setVoiceLogs(getVoiceLogs());
+    syncLogs();
+    window.addEventListener(VOICE_LOGS_EVENT, syncLogs);
+    return () => window.removeEventListener(VOICE_LOGS_EVENT, syncLogs);
+  }, []);
 
   useEffect(() => {
     if (focusSection !== 'ai') return;
@@ -357,6 +372,22 @@ export function SettingsSheet({
     } catch {
       onToast('לא ניתן להעתיק אוטומטית');
     }
+  };
+
+  const copyVoiceLogs = async () => {
+    try {
+      await navigator.clipboard.writeText(
+        formatVoiceLogsText({ provider: aiProvider, hasKey: aiKey.trim().length > 0 })
+      );
+      onToast('הלוג הועתק ללוח (ללא מפתחות API)');
+    } catch {
+      onToast('לא ניתן להעתיק אוטומטית');
+    }
+  };
+
+  const handleClearVoiceLogs = () => {
+    clearVoiceLogs();
+    onToast('הלוג נוקה');
   };
 
   const move = (idx: number, dir: -1 | 1) => {
@@ -531,6 +562,55 @@ export function SettingsSheet({
             </div>
           </div>
         )}
+
+        <details className="ai-logs-details">
+          <summary className="ai-logs-summary">
+            <span>לוג אבחון ותקלות</span>
+            <span className="ai-logs-meta">
+              {voiceLogs.some((l) => l.level === 'error') && (
+                <span className="ai-logs-err-dot" aria-hidden="true" />
+              )}
+              <span className="ai-logs-count tabular-nums">{voiceLogs.length}</span>
+            </span>
+          </summary>
+          <div className="ai-logs-body">
+            <div className="ai-logs-toolbar">
+              <button
+                type="button"
+                className="btn-secondary ai-logs-copy-btn"
+                disabled={voiceLogs.length === 0}
+                onClick={copyVoiceLogs}
+              >
+                <IconCopy className="w-3.5 h-3.5 shrink-0" />
+                <span>העתק לוג</span>
+              </button>
+              <button
+                type="button"
+                className="btn-ghost ai-logs-clear-btn"
+                disabled={voiceLogs.length === 0}
+                onClick={handleClearVoiceLogs}
+              >
+                נקה לוג
+              </button>
+            </div>
+            {voiceLogs.length === 0 ? (
+              <p className="ai-logs-empty">אין עדיין רישומים בסשן הנוכחי.</p>
+            ) : (
+              <div className="ai-logs-list" dir="ltr">
+                {[...voiceLogs].reverse().map((entry) => (
+                  <div key={entry.id} className={`ai-log-row level-${entry.level}`}>
+                    <div className="ai-log-head">
+                      <span className="ai-log-ts tabular-nums">{entry.ts}</span>
+                      <span className="ai-log-stage">{entry.stage}</span>
+                      <span className="ai-log-msg">{entry.msg}</span>
+                    </div>
+                    {entry.detail && <div className="ai-log-detail">{entry.detail}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
       </section>
 
       <section className="settings-block home-card-block">

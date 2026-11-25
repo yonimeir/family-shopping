@@ -13,7 +13,8 @@ import {
   type VoiceAction,
   type VoiceAiResult,
 } from '../lib/voiceAi';
-import { formatQty } from '../lib/util';
+import { formatQty, normalize } from '../lib/util';
+import { logVoice } from '../lib/voiceLog';
 import type { AppState, ListEntry } from '../types';
 import {
   IconCheck,
@@ -154,6 +155,8 @@ export function VoiceAssistant({
 
   const hudRef = useRef<HTMLDivElement>(null);
   const lockPillRef = useRef<HTMLDivElement>(null);
+  const inFlightStopRef = useRef(false);
+  const holdStartedAtRef = useRef(0);
 
   const gestureRef = useRef({
     watching: false,
@@ -235,12 +238,22 @@ export function VoiceAssistant({
     void startHandsFreeOnDock();
   }, [autoOpenTrigger]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const resolveCatalogItem = useCallback(
+    (act: VoiceAction) => {
+      if (act.itemId && state.catalog[act.itemId]) return state.catalog[act.itemId];
+      const normName = act.name ? normalize(act.name) : '';
+      if (!normName) return undefined;
+      return Object.values(state.catalog).find((it) => normalize(it.name) === normName);
+    },
+    [state.catalog]
+  );
+
   const buildChecklistItems = useCallback(
     (result: VoiceAiResult): ChecklistItem[] => {
       const catNameMap = new Map(state.categories.map((c) => [c.id, c.name]));
       return result.actions.map((action, idx) => {
         const key = `${Date.now()}_${idx}`;
-        const existingItem = action.itemId ? state.catalog[action.itemId] : undefined;
+        const existingItem = resolveCatalogItem(action);
         const unit = action.unit || existingItem?.defaultUnit || "יח'";
         const qty = typeof action.qty === 'number' && action.qty > 0 ? action.qty : existingItem?.defaultQty ?? 1;
 
@@ -323,7 +336,7 @@ export function VoiceAssistant({
         };
       });
     },
-    [state.catalog, state.categories, state.list]
+    [resolveCatalogItem, state.categories, state.list]
   );
 
   const executeActionsBatch = useCallback(
@@ -365,8 +378,11 @@ export function VoiceAssistant({
           continue;
         }
 
-        const item = act.itemId ? state.catalog[act.itemId] : undefined;
-        if (!item) continue;
+        const item = resolveCatalogItem(act);
+        if (!item) {
+          logVoice('voice:skip', 'לא נמצא מוצר בקטלוג לפעולה', { kind: act.kind, itemId: act.itemId, name: act.name }, 'warn');
+          continue;
+        }
 
         if (act.kind === 'add_existing') {
           const qty = typeof act.qty === 'number' && act.qty > 0 ? act.qty : item.defaultQty;
@@ -411,7 +427,7 @@ export function VoiceAssistant({
 
       return { chips, undo, appliedCount };
     },
-    [actions, state.catalog, state.categories, state.list]
+    [actions, resolveCatalogItem, state.categories, state.list]
   );
 
   const applyUiCommand = useCallback(
@@ -458,6 +474,13 @@ export function VoiceAssistant({
         const needsConfirm = shouldRequireConfirmation(result);
 
         if (!needsConfirm && result.actions.length === 0) {
+          logVoice('voice:result', 'הושלמה פקודה ללא שינוי רשימה', {
+            transcript: transcript.slice(0, 60),
+            reply: result.reply.slice(0, 60),
+            actionsCount: 0,
+            needsConfirm: false,
+            appliedCount: 0,
+          });
           setPendingPlan(null);
           setOutcome({
             id: Date.now(),
@@ -471,7 +494,14 @@ export function VoiceAssistant({
         }
 
         if (!needsConfirm) {
-          const { chips, undo } = executeActionsBatch(result.actions);
+          const { chips, undo, appliedCount } = executeActionsBatch(result.actions);
+          logVoice('voice:result', 'בוצעו עדכונים ברשימה', {
+            transcript: transcript.slice(0, 60),
+            reply: result.reply.slice(0, 60),
+            actionsCount: result.actions.length,
+            needsConfirm: false,
+            appliedCount,
+          });
           setPendingPlan(null);
           setOutcome({
             id: Date.now(),
@@ -486,6 +516,13 @@ export function VoiceAssistant({
         }
 
         const checklist = buildChecklistItems(result);
+        logVoice('voice:result', 'נדרש אישור משתמש לפני ביצוע', {
+          transcript: transcript.slice(0, 60),
+          reply: result.reply.slice(0, 60),
+          actionsCount: result.actions.length,
+          needsConfirm: true,
+          appliedCount: 0,
+        });
         setOutcome({
           id: Date.now(),
           transcript,
@@ -501,6 +538,7 @@ export function VoiceAssistant({
         setSheetOpen(true);
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'אירעה שגיאה בעיבוד הפקודה.';
+        logVoice('voice:error', 'שגיאה בעיבוד פקודה קולית', err, 'error');
         setPendingPlan(null);
         setOutcome({
           id: Date.now(),
@@ -527,23 +565,53 @@ export function VoiceAssistant({
   );
 
   const stopAndProcess = useCallback(async () => {
-    const res = await stopRecorder();
-    if (!res.audio && !res.transcript) {
-      updateHoldPhase('idle');
-      return;
+    if (inFlightStopRef.current) return;
+    inFlightStopRef.current = true;
+    try {
+      updateHoldPhase('thinking');
+      setThinkingLabel('מעבד הקלטה...');
+      const res = await stopRecorder();
+      logVoice('voice:stop', 'תוצאת עצירת הקלטה', {
+        hasAudio: Boolean(res.audio),
+        bytes: res.audio?.size ?? 0,
+        mime: res.audio?.type ?? '',
+        transcriptLen: res.transcript?.length ?? 0,
+      });
+      if (!res.audio && !res.transcript) {
+        logVoice('voice:stop', 'לא התקבל שמע או טקסט מעצירה', undefined, 'warn');
+        updateHoldPhase('idle');
+        onToast('לא נקלט שמע — נסו שוב');
+        return;
+      }
+      if (res.audio && res.audio.size < 400) {
+        logVoice('voice:stop', 'קובץ שמע קטן מדי', { bytes: res.audio.size }, 'warn');
+        updateHoldPhase('idle');
+        onToast('ההקלטה קצרה מדי — נסו שוב');
+        return;
+      }
+      await runCommand({ audio: res.audio, text: res.transcript });
+    } finally {
+      inFlightStopRef.current = false;
     }
-    if (res.audio && res.audio.size < 900) {
-      updateHoldPhase('idle');
-      onToast('ההקלטה קצרה מדי — נסו שוב');
-      return;
-    }
-    await runCommand({ audio: res.audio, text: res.transcript });
   }, [onToast, runCommand, stopRecorder, updateHoldPhase]);
 
   // ---------- Floating Dock FAB Pointer Handlers ----------
   const onFabPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (holdPhaseRef.current === 'thinking' || e.button !== 0) return;
     e.stopPropagation();
+
+    logVoice('fab:down', 'לחיצה על כפתור המיקרופון', {
+      phase: holdPhaseRef.current,
+      pointerType: e.pointerType,
+      hasKey: hasActiveAiKey(),
+      provider: getAiProvider(),
+    });
+
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore synthetic */
+    }
 
     const g = gestureRef.current;
     window.clearTimeout(g.holdTimer);
@@ -575,12 +643,6 @@ export function VoiceAssistant({
       holdTimer: 0,
     };
 
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      /* ignore synthetic */
-    }
-
     if (!hasActiveAiKey()) return;
 
     gestureRef.current.holdTimer = window.setTimeout(async () => {
@@ -588,6 +650,7 @@ export function VoiceAssistant({
       if (!curr.watching || curr.cancelled || curr.locked) return;
 
       curr.holdEngaged = true;
+      holdStartedAtRef.current = Date.now();
       updateHoldPhase('holding');
       haptic(16);
       hudRef.current?.style.setProperty('--cancel-pull', '0px');
@@ -645,6 +708,14 @@ export function VoiceAssistant({
     g.watching = false;
     window.clearTimeout(g.holdTimer);
 
+    logVoice('fab:up', 'שחרור כפתור המיקרופון', {
+      type: e.type,
+      holdEngaged: g.holdEngaged,
+      stopTap: g.stopTap,
+      locked: g.locked,
+      cancelled: g.cancelled,
+    });
+
     try {
       if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
         e.currentTarget.releasePointerCapture(e.pointerId);
@@ -655,8 +726,10 @@ export function VoiceAssistant({
 
     if (e.type === 'pointercancel') {
       if (g.holdEngaged) {
+        logVoice('fab:cancel', 'ההחזקה נקטעה (pointercancel)', undefined, 'warn');
         cancelRecorder();
         updateHoldPhase('idle');
+        onToast('ההקלטה בוטלה — נסו הקשה קצרה להתחלת הקלטה');
       }
       return;
     }
@@ -677,7 +750,7 @@ export function VoiceAssistant({
       return;
     }
 
-    if (recorder.elapsedMs < 350) {
+    if (Date.now() - holdStartedAtRef.current < 350) {
       cancelRecorder();
       updateHoldPhase('idle');
       onToast('החזיקו עוד רגע כדי להקליט, או לחצו לחיצה קצרה לפתיחה');

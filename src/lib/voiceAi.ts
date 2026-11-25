@@ -1,4 +1,5 @@
 import type { AppState } from '../types';
+import { logVoice } from './voiceLog';
 
 export type AiProvider = 'gemini' | 'openai' | 'claude';
 
@@ -356,7 +357,13 @@ function extractJsonText(raw: string): string {
 }
 
 function parseAiResult(rawText: string, interactionId?: string): VoiceAiResult {
-  const parsed = JSON.parse(extractJsonText(rawText)) as Partial<VoiceAiResult>;
+  let parsed: Partial<VoiceAiResult>;
+  try {
+    parsed = JSON.parse(extractJsonText(rawText)) as Partial<VoiceAiResult>;
+  } catch (err) {
+    logVoice('ai:parse', 'כשל בפענוח JSON מהמודל', { snippet: rawText.slice(0, 140), err: String(err) }, 'error');
+    throw err;
+  }
   const actions = Array.isArray(parsed.actions)
     ? parsed.actions.filter((a): a is VoiceAction => Boolean(a && typeof a.kind === 'string'))
     : [];
@@ -365,7 +372,7 @@ function parseAiResult(rawText: string, interactionId?: string): VoiceAiResult {
       ? parsed.uiCommand
       : null;
 
-  return {
+  const result: VoiceAiResult = {
     transcript: typeof parsed.transcript === 'string' ? parsed.transcript.trim() : '',
     reply: typeof parsed.reply === 'string' ? parsed.reply.trim() : 'בוצע',
     isRecipeOrMeal: Boolean(parsed.isRecipeOrMeal),
@@ -373,6 +380,27 @@ function parseAiResult(rawText: string, interactionId?: string): VoiceAiResult {
     uiCommand,
     interactionId,
   };
+  logVoice('ai:parse', 'פוענח JSON מהמודל', {
+    transcriptLen: result.transcript.length,
+    actionsCount: result.actions.length,
+    hasUiCmd: Boolean(result.uiCommand),
+  });
+  return result;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 25_000): Promise<Response> {
+  const controller = new AbortController();
+  const timer = globalThis.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('הבקשה ל־AI ארכה יותר מדי (timeout) — נסו שוב.');
+    }
+    throw err;
+  } finally {
+    globalThis.clearTimeout(timer);
+  }
 }
 
 function formatHttpError(provider: AiProvider, status: number, bodyText: string): Error {
@@ -533,7 +561,18 @@ async function runGeminiInteraction(params: {
       body.previous_interaction_id = params.previousInteractionId;
     }
 
-    return fetch(GEMINI_INTERACTIONS_URL, {
+    logVoice('ai:req', 'שליחת בקשה ל-Gemini', {
+      provider: 'gemini',
+      model,
+      url: GEMINI_INTERACTIONS_URL,
+      schemaMode,
+      hasAudio: Boolean(audioPayload),
+      audioMime: audioPayload?.mimeType ?? '',
+      audioB64Len: audioPayload?.data.length ?? 0,
+      textLen: params.text?.length ?? 0,
+    });
+
+    return fetchWithTimeout(GEMINI_INTERACTIONS_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -543,9 +582,24 @@ async function runGeminiInteraction(params: {
     });
   };
 
-  const parseSuccess = async (res: Response, model: string): Promise<VoiceAiResult> => {
+  const parseSuccess = async (res: Response, model: string, ms: number): Promise<VoiceAiResult> => {
     const data = (await res.json()) as GeminiInteractionResponse;
     const rawText = extractGeminiInteractionText(data);
+    logVoice(
+      'ai:res',
+      rawText ? 'תגובה מ-Gemini' : 'תגובה ריקה מ-Gemini',
+      {
+        provider: 'gemini',
+        model,
+        status: res.status,
+        ms,
+        ok: Boolean(rawText),
+        keys: Object.keys(data),
+        textLen: rawText.length,
+        ...(rawText ? {} : { snippet: JSON.stringify(data).slice(0, 160) }),
+      },
+      rawText ? 'info' : 'error'
+    );
     if (!rawText) throw new Error('Gemini לא החזיר תשובה טקסטואלית.');
     return parseAiResult(rawText, model === GEMINI_MODELS[0] ? data.id : undefined);
   };
@@ -560,20 +614,29 @@ async function runGeminiInteraction(params: {
     let activeSchemaMode: GeminiSchemaMode = geminiSchemaMode;
 
     while (true) {
+      const t0 = Date.now();
       const res = await sendAttempt(model, usePrevId, activeSchemaMode);
+      const ms = Date.now() - t0;
 
       if (res.ok) {
         geminiSchemaMode = activeSchemaMode;
-        return parseSuccess(res, model);
+        return parseSuccess(res, model, ms);
       }
 
       const errText = await res.text();
+      logVoice(
+        'ai:res',
+        'שגיאת HTTP מ-Gemini',
+        { provider: 'gemini', model, status: res.status, ms, ok: false, snippet: errText.slice(0, 160) },
+        'error'
+      );
       if (res.status === 401 || res.status === 403) {
         throw formatHttpError('gemini', res.status, errText);
       }
       if (isSchemaFieldError(res.status, errText)) {
         const next = nextSchemaMode(activeSchemaMode);
         if (next) {
+          logVoice('ai:schema', 'מעבר למצב סכמה חלופי', { model, from: activeSchemaMode, to: next }, 'warn');
           geminiSchemaMode = next;
           activeSchemaMode = next;
           continue;
@@ -583,6 +646,7 @@ async function runGeminiInteraction(params: {
         if (res.status === 503 || res.status === 429) {
           geminiCooldownUntil.set(model, Date.now() + GEMINI_COOLDOWN_MS);
         }
+        logVoice('ai:failover', 'מעבר למודל גיבוי ב-Gemini', { from: model, status: res.status }, 'warn');
         lastStatus = res.status;
         lastErrText = errText;
         break;
@@ -594,11 +658,19 @@ async function runGeminiInteraction(params: {
   if (lastStatus === 503 || lastStatus === 502 || lastStatus === 504) {
     await new Promise((r) => setTimeout(r, 800));
     const retryModel = 'gemini-3.5-flash-lite';
+    const t0 = Date.now();
     const retryRes = await sendAttempt(retryModel, false, geminiSchemaMode);
+    const ms = Date.now() - t0;
     if (retryRes.ok) {
-      return parseSuccess(retryRes, retryModel);
+      return parseSuccess(retryRes, retryModel, ms);
     }
     const retryErrText = await retryRes.text();
+    logVoice(
+      'ai:res',
+      'שגיאה בניסיון החוזר מול Gemini',
+      { provider: 'gemini', model: retryModel, status: retryRes.status, ms, ok: false, snippet: retryErrText.slice(0, 160) },
+      'error'
+    );
     throw formatHttpError('gemini', retryRes.status, retryErrText);
   }
 
@@ -613,16 +685,21 @@ async function transcribeWithOpenAi(key: string, audio: Blob): Promise<string> {
     form.append('file', audio, `voice.${ext}`);
     form.append('model', model);
     form.append('language', 'he');
-    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+    logVoice('ai:req', 'שליחת שמע לתמלול ב-OpenAI', { provider: 'openai', model, bytes: audio.size, mime });
+    const t0 = Date.now();
+    const res = await fetchWithTimeout('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: { Authorization: `Bearer ${key}` },
       body: form,
     });
+    const ms = Date.now() - t0;
     if (res.ok) {
       const json = (await res.json()) as { text?: string };
+      logVoice('ai:res', 'תמלול OpenAI הצליח', { provider: 'openai', model, status: res.status, ms, ok: true, textLen: json.text?.length ?? 0 });
       return json.text?.trim() || '';
     }
     const errText = await res.text();
+    logVoice('ai:res', 'שגיאה בתמלול OpenAI', { provider: 'openai', model, status: res.status, ms, ok: false, snippet: errText.slice(0, 160) }, 'error');
     if (res.status !== 404 && !errText.toLowerCase().includes('model')) {
       throw formatHttpError('openai', res.status, errText);
     }
@@ -653,7 +730,9 @@ async function runOpenAiCommand(params: {
     { role: 'user', content: userText },
   ];
 
-  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+  logVoice('ai:req', 'שליחת פקודה ל-OpenAI', { provider: 'openai', model: 'gpt-4o-mini', textLen: userText.length });
+  const t0 = Date.now();
+  const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -666,15 +745,19 @@ async function runOpenAiCommand(params: {
       messages,
     }),
   });
+  const ms = Date.now() - t0;
 
   if (!res.ok) {
-    throw formatHttpError('openai', res.status, await res.text());
+    const errText = await res.text();
+    logVoice('ai:res', 'שגיאת HTTP מ-OpenAI', { provider: 'openai', model: 'gpt-4o-mini', status: res.status, ms, ok: false, snippet: errText.slice(0, 160) }, 'error');
+    throw formatHttpError('openai', res.status, errText);
   }
 
   const data = (await res.json()) as {
     choices?: Array<{ message?: { content?: string } }>;
   };
   const rawText = data.choices?.[0]?.message?.content || '';
+  logVoice('ai:res', 'תגובה מ-OpenAI', { provider: 'openai', model: 'gpt-4o-mini', status: res.status, ms, ok: Boolean(rawText), textLen: rawText.length });
   if (!rawText) throw new Error('ChatGPT לא החזיר תשובה.');
   const result = parseAiResult(rawText);
   if (!result.transcript) result.transcript = userText;
@@ -695,7 +778,9 @@ async function runClaudeCommand(params: {
     { role: 'user', content: userText },
   ];
 
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
+  logVoice('ai:req', 'שליחת פקודה ל-Claude', { provider: 'claude', model: 'claude-haiku-4-5', textLen: userText.length });
+  const t0 = Date.now();
+  const res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
       'x-api-key': params.key,
@@ -710,15 +795,19 @@ async function runClaudeCommand(params: {
       messages,
     }),
   });
+  const ms = Date.now() - t0;
 
   if (!res.ok) {
-    throw formatHttpError('claude', res.status, await res.text());
+    const errText = await res.text();
+    logVoice('ai:res', 'שגיאת HTTP מ-Claude', { provider: 'claude', model: 'claude-haiku-4-5', status: res.status, ms, ok: false, snippet: errText.slice(0, 160) }, 'error');
+    throw formatHttpError('claude', res.status, errText);
   }
 
   const data = (await res.json()) as {
     content?: Array<{ type?: string; text?: string }>;
   };
   const rawText = data.content?.find((b) => b.type === 'text')?.text || '';
+  logVoice('ai:res', 'תגובה מ-Claude', { provider: 'claude', model: 'claude-haiku-4-5', status: res.status, ms, ok: Boolean(rawText), textLen: rawText.length });
   if (!rawText) throw new Error('Claude לא החזיר תשובה.');
   const result = parseAiResult(rawText);
   if (!result.transcript) result.transcript = userText;
@@ -783,7 +872,7 @@ export async function testAiConnection(
       let lastStatus = 503;
       let lastErrText = '';
       for (const model of candidates) {
-        const res = await fetch(GEMINI_INTERACTIONS_URL, {
+        const res = await fetchWithTimeout(GEMINI_INTERACTIONS_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -814,7 +903,7 @@ export async function testAiConnection(
     }
 
     if (provider === 'openai') {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      const res = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -830,7 +919,7 @@ export async function testAiConnection(
       return { ok: true };
     }
 
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'x-api-key': key,

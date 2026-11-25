@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { logVoice } from './voiceLog';
 
 export type RecorderMode = 'audio' | 'speech';
 
@@ -121,6 +122,11 @@ export function useVoiceRecorder() {
     async (mode: RecorderMode): Promise<boolean> => {
       cleanupResources();
       const mySession = sessionIdRef.current;
+      const hasMediaDevices = Boolean(navigator.mediaDevices?.getUserMedia);
+      const hasMediaRecorder = typeof MediaRecorder !== 'undefined';
+      const pickedMime = mode === 'audio' ? pickAudioMimeType() : '';
+      logVoice('rec:start', 'התחלת הקלטה', { mode, hasMediaDevices, hasMediaRecorder, pickedMime });
+
       setError(null);
       setLiveTranscript('');
       setElapsedMs(0);
@@ -131,6 +137,7 @@ export function useVoiceRecorder() {
       if (mode === 'speech') {
         const Ctor = getSpeechRecCtor();
         if (!Ctor) {
+          logVoice('rec:error', 'זיהוי דיבור מובנה לא נתמך בדפדפן', { mode }, 'error');
           setError('זיהוי דיבור מובנה לא נתמך בדפדפן הזה — עברו ל־Gemini או הקלידו למטה.');
           return false;
         }
@@ -163,6 +170,7 @@ export function useVoiceRecorder() {
             setLiveTranscript(clean);
           };
           rec.onerror = (ev) => {
+            logVoice('rec:error', 'שגיאת זיהוי דיבור', { error: ev.error }, 'error');
             if (ev.error === 'not-allowed' || ev.error === 'service-not-allowed') {
               setError('אין הרשאת מיקרופון בדפדפן.');
             }
@@ -172,18 +180,21 @@ export function useVoiceRecorder() {
           startedAtRef.current = Date.now();
           activeRef.current = true;
           setRecording(true);
+          logVoice('rec:active', 'הקלטת דיבור פעילה', { mode: 'speech', lang: rec.lang });
           timerRef.current = window.setInterval(() => {
             setElapsedMs(Date.now() - startedAtRef.current);
           }, 120);
           return true;
-        } catch {
+        } catch (err) {
           cleanupResources();
+          logVoice('rec:error', 'כשל בהפעלת זיהוי דיבור', err, 'error');
           setError('לא ניתן להפעיל זיהוי דיבור כרגע — הקלידו בתיבת הטקסט.');
           return false;
         }
       }
 
-      if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      if (!hasMediaDevices || !hasMediaRecorder) {
+        logVoice('rec:error', 'הקלטת מיקרופון אינה נתמכת במכשיר', { hasMediaDevices, hasMediaRecorder }, 'error');
         setError('הקלטת מיקרופון אינה נתמכת במכשיר זה.');
         return false;
       }
@@ -203,8 +214,7 @@ export function useVoiceRecorder() {
         streamRef.current = stream;
         attachAnalyser(stream);
 
-        const mimeType = pickAudioMimeType();
-        const rec = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+        const rec = pickedMime ? new MediaRecorder(stream, { mimeType: pickedMime }) : new MediaRecorder(stream);
         rec.ondataavailable = (ev) => {
           if (ev.data.size > 0) chunksRef.current.push(ev.data);
         };
@@ -213,6 +223,7 @@ export function useVoiceRecorder() {
         startedAtRef.current = Date.now();
         activeRef.current = true;
         setRecording(true);
+        logVoice('rec:active', 'הקלטת שמע פעילה', { mode: 'audio', mimeType: rec.mimeType || pickedMime || 'default' });
         timerRef.current = window.setInterval(() => {
           setElapsedMs(Date.now() - startedAtRef.current);
         }, 120);
@@ -220,6 +231,7 @@ export function useVoiceRecorder() {
       } catch (err) {
         cleanupResources();
         const name = err instanceof Error ? err.name : '';
+        logVoice('rec:error', 'כשל בפתיחת מיקרופון', { name, msg: err instanceof Error ? err.message : String(err) }, 'error');
         if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
           setError('יש לאשר גישה למיקרופון בהגדרות הדפדפן.');
         } else {
@@ -232,7 +244,10 @@ export function useVoiceRecorder() {
   );
 
   const stop = useCallback(async (): Promise<{ audio?: Blob; transcript?: string }> => {
-    if (!activeRef.current) return {};
+    if (!activeRef.current) {
+      logVoice('rec:stop', 'עצירה כשלא פעילה הקלטה', { mode: modeRef.current }, 'warn');
+      return {};
+    }
     if (timerRef.current !== null) {
       window.clearInterval(timerRef.current);
       timerRef.current = null;
@@ -258,12 +273,14 @@ export function useVoiceRecorder() {
         });
       }
       const transcript = finalTranscriptRef.current.trim();
+      logVoice('rec:stop', 'הקלטת דיבור נעצרה', { mode: 'speech', transcriptLen: transcript.length });
       cleanupResources();
       return { transcript };
     }
 
     const rec = mediaRecRef.current;
     if (!rec) {
+      logVoice('rec:stop', 'חסר אובייקט MediaRecorder בעצירה', { mode: 'audio' }, 'warn');
       cleanupResources();
       return {};
     }
@@ -282,6 +299,13 @@ export function useVoiceRecorder() {
         return;
       }
       try {
+        if (rec.state === 'recording' && typeof rec.requestData === 'function') {
+          rec.requestData();
+        }
+      } catch {
+        /* ignore requestData unsupported */
+      }
+      try {
         rec.stop();
       } catch {
         finalize();
@@ -289,11 +313,22 @@ export function useVoiceRecorder() {
       window.setTimeout(finalize, 600);
     });
 
+    const elapsedMs = startedAtRef.current ? Date.now() - startedAtRef.current : 0;
+    logVoice('rec:stop', 'הקלטת שמע נעצרה', {
+      mode: 'audio',
+      chunks: chunksRef.current.length,
+      bytes: blob.size,
+      mime: blob.type,
+      elapsedMs,
+    });
     cleanupResources();
     return { audio: blob };
   }, [cleanupResources]);
 
   const cancel = useCallback(() => {
+    if (activeRef.current) {
+      logVoice('rec:cancel', 'ההקלטה בוטלה', { mode: modeRef.current }, 'warn');
+    }
     chunksRef.current = [];
     finalTranscriptRef.current = '';
     setLiveTranscript('');
