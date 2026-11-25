@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export type RecorderMode = 'audio' | 'speech';
 
@@ -60,8 +60,10 @@ export function useVoiceRecorder() {
   const timerRef = useRef<number | null>(null);
   const startedAtRef = useRef(0);
   const activeRef = useRef(false);
+  const sessionIdRef = useRef(0);
 
   const cleanupResources = useCallback(() => {
+    sessionIdRef.current += 1;
     if (timerRef.current !== null) {
       window.clearInterval(timerRef.current);
       timerRef.current = null;
@@ -118,6 +120,7 @@ export function useVoiceRecorder() {
   const start = useCallback(
     async (mode: RecorderMode): Promise<boolean> => {
       cleanupResources();
+      const mySession = sessionIdRef.current;
       setError(null);
       setLiveTranscript('');
       setElapsedMs(0);
@@ -134,12 +137,17 @@ export function useVoiceRecorder() {
         try {
           if (navigator.mediaDevices?.getUserMedia) {
             const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            if (sessionIdRef.current !== mySession) {
+              micStream.getTracks().forEach((t) => t.stop());
+              return false;
+            }
             streamRef.current = micStream;
             attachAnalyser(micStream);
           }
         } catch {
           /* SpeechRecognition handles mic permission directly */
         }
+        if (sessionIdRef.current !== mySession) return false;
         try {
           const rec = new Ctor();
           rec.lang = 'he-IL';
@@ -188,6 +196,10 @@ export function useVoiceRecorder() {
             channelCount: 1,
           },
         });
+        if (sessionIdRef.current !== mySession) {
+          stream.getTracks().forEach((t) => t.stop());
+          return false;
+        }
         streamRef.current = stream;
         attachAnalyser(stream);
 
@@ -290,15 +302,20 @@ export function useVoiceRecorder() {
     cleanupResources();
   }, [cleanupResources]);
 
-  return {
-    recording,
-    elapsedMs,
-    liveTranscript,
-    error,
-    analyserRef,
-    start,
-    stop,
-    cancel,
-    clearError: () => setError(null),
-  };
+  const clearError = useCallback(() => setError(null), []);
+
+  return useMemo(
+    () => ({
+      recording,
+      elapsedMs,
+      liveTranscript,
+      error,
+      analyserRef,
+      start,
+      stop,
+      cancel,
+      clearError,
+    }),
+    [recording, elapsedMs, liveTranscript, error, start, stop, cancel, clearError]
+  );
 }

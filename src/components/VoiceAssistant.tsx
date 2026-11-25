@@ -159,6 +159,7 @@ export function VoiceAssistant({
   onVoiceSheetChange,
 }: Props) {
   const recorder = useVoiceRecorder();
+  const { cancel: cancelRecorder } = recorder;
   const [holdPhase, setHoldPhase] = useState<HoldPhase>('idle');
   const [sheetOpen, setSheetOpenState] = useState(false);
   const [provider, setProvider] = useState<AiProvider>(() => getAiProvider());
@@ -210,7 +211,7 @@ export function VoiceAssistant({
   }, [refreshKeyState]);
 
   const closeSheet = useCallback(() => {
-    if (recorder.recording) recorder.cancel();
+    cancelRecorder();
     setHoldPhase('idle');
     setSheetOpen(false);
     setPendingPlan(null);
@@ -218,7 +219,7 @@ export function VoiceAssistant({
     setTextInput('');
     sessionHistoryRef.current = [];
     interactionIdRef.current = undefined;
-  }, [recorder, setSheetOpen]);
+  }, [cancelRecorder, setSheetOpen]);
 
   // Triggered when app launched from `?voice=1` PWA shortcut
   useEffect(() => {
@@ -616,6 +617,7 @@ export function VoiceAssistant({
       if (!curr.watching || curr.cancelled || curr.locked) return;
 
       if (!hasActiveAiKey()) {
+        curr.watching = false;
         curr.cancelled = true;
         haptic(12);
         setSheetOpen(true);
@@ -688,12 +690,22 @@ export function VoiceAssistant({
       /* ignore */
     }
 
+    if (e.type === 'pointercancel') {
+      if (g.holdEngaged) {
+        cancelRecorder();
+        setHoldPhase('idle');
+      }
+      return;
+    }
+
     if (g.cancelled || g.locked) return;
 
     if (!g.holdEngaged) {
       if (e.type === 'pointerup') {
-        refreshKeyState();
-        setSheetOpen(true);
+        window.requestAnimationFrame(() => {
+          refreshKeyState();
+          setSheetOpen(true);
+        });
       }
       setHoldPhase('idle');
       return;
@@ -836,6 +848,12 @@ export function VoiceAssistant({
             onPointerMove={onFabPointerMove}
             onPointerUp={onFabPointerEnd}
             onPointerCancel={onFabPointerEnd}
+            onClick={(e) => {
+              if (e.detail === 0 && holdPhase !== 'thinking') {
+                refreshKeyState();
+                setSheetOpen(true);
+              }
+            }}
             onContextMenu={(e) => e.preventDefault()}
             aria-label="עוזר קולי (החזיקו להקלטה או לחצו לפתיחה)"
             title="החזיקו להקלטה · גררו מעלה לנעילה"

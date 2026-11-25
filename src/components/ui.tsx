@@ -36,6 +36,12 @@ export function RollingNumber({ value, className }: { value: number | string; cl
 /** Vaul-style swipeable bottom sheet rendered in a portal over document.body. */
 export function Sheet({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   const [closing, setClosing] = useState(false);
+  const closingRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const mountedAtRef = useRef(performance.now());
+  const backdropPointerDownRef = useRef(false);
+
   const sheetRef = useRef<HTMLDivElement>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -54,12 +60,15 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
   });
 
   const triggerClose = useCallback(() => {
-    if (closing) return;
+    if (closingRef.current) return;
+    closingRef.current = true;
     setClosing(true);
     document.body.classList.remove('sheet-open');
     window.clearTimeout(closeTimer.current);
-    closeTimer.current = window.setTimeout(onClose, SHEET_EXIT_MS);
-  }, [closing, onClose]);
+    closeTimer.current = window.setTimeout(() => {
+      onCloseRef.current();
+    }, SHEET_EXIT_MS);
+  }, []);
 
   useEffect(() => {
     const originY = window.scrollY + window.innerHeight * 0.42;
@@ -181,7 +190,16 @@ export function Sheet({ title, onClose, children }: { title: string; onClose: ()
     <div
       ref={backdropRef}
       className={`sheet-backdrop ${closing ? 'sheet-backdrop-closing' : ''}`}
-      onClick={triggerClose}
+      onPointerDown={(e) => {
+        backdropPointerDownRef.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        const startedOnBackdrop = backdropPointerDownRef.current;
+        backdropPointerDownRef.current = false;
+        if (!startedOnBackdrop || e.target !== e.currentTarget) return;
+        if (performance.now() - mountedAtRef.current < 260) return;
+        triggerClose();
+      }}
     >
       <div
         ref={sheetRef}
