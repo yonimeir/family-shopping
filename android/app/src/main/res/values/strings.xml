@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">אין כלום בבית</string>
+    <string name="title_activity_main">אין כלום בבית</string>
+    <string name="package_name">com.yonimeir.familyshopping</string>
+    <string name="custom_url_scheme">com.yonimeir.familyshopping</string>
+    <string name="widget_label">אין כלום בבית — הקלטה וצ\'אט</string>
+    <string name="widget_btn_voice">הקלטה</string>
+    <string name="widget_btn_chat">צ\'אט</string>
+</resources>

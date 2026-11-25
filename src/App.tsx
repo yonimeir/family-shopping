@@ -7,6 +7,11 @@ import { SuperView } from './components/SuperView';
 import { VoiceAssistant } from './components/VoiceAssistant';
 import { RollingNumber, Toast, type ToastData } from './components/ui';
 import { isMyShopperActive, isShopperActive, SHOPPER_STALE_MS } from './lib/chatHelpers';
+import {
+  consumeNativePendingAction,
+  registerNativeHandlers,
+  syncWidgetShopperState,
+} from './lib/nativeBridge';
 import { getDeviceId, getPendingInviteFromUrl, haptic, resolveFamilyId } from './lib/util';
 import { consumeAiKeyFromUrlHash } from './lib/voiceAi';
 import { useStore } from './lib/useStore';
@@ -182,6 +187,27 @@ export default function App() {
     autoChatFiredRef.current = true;
     setAutoOpenChatTrigger((n) => n + 1);
   }, [initialChatLaunch, familyId, state.ready]);
+
+  useEffect(() => {
+    return registerNativeHandlers({
+      onVoice: () => setAutoOpenVoiceTrigger((n) => n + 1),
+      onChat: () => setAutoOpenChatTrigger((n) => n + 1),
+    });
+  }, []);
+
+  const nativeActionConsumedRef = useRef(false);
+  useEffect(() => {
+    if (!familyId || !state.ready || nativeActionConsumedRef.current) return;
+    nativeActionConsumedRef.current = true;
+    const pending = consumeNativePendingAction();
+    if (pending === 'voice') setAutoOpenVoiceTrigger((n) => n + 1);
+    else if (pending === 'chat') setAutoOpenChatTrigger((n) => n + 1);
+  }, [familyId, state.ready]);
+
+  const partnerShopperActive = state.ready && isShopperActive(state.shopper, me);
+  useEffect(() => {
+    syncWidgetShopperState(partnerShopperActive);
+  }, [partnerShopperActive]);
 
   const latestShopperRef = useRef(state.shopper);
   latestShopperRef.current = state.shopper;

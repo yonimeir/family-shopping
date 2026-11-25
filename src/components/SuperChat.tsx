@@ -19,6 +19,7 @@ import {
   setChatLastRead,
 } from '../lib/chatHelpers';
 import { compressShelfPhoto } from '../lib/chatMedia';
+import { syncWidgetUnreadCount } from '../lib/nativeBridge';
 import { RollingNumber, Sheet } from './ui';
 import { IconBellOff, IconCamera, IconClose, IconMessage, IconSend, IconTrash } from './Icons';
 
@@ -161,6 +162,7 @@ export function SuperChat({
       /* ignore */
     }
     window.dispatchEvent(new CustomEvent(CHAT_UNREAD_EVENT, { detail: { unreadCount } }));
+    syncWidgetUnreadCount(unreadCount);
   }, [unreadCount]);
 
   // Capturing-phase Escape closes the lightbox before Vaul Sheet captures Escape.

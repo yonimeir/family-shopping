@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#3B5339</color>
+    <color name="colorPrimaryDark">#2D422B</color>
+    <color name="colorAccent">#3B5339</color>
+    <color name="warm_paper">#FAF8F4</color>
+    <color name="warm_card">#FDFCF9</color>
+    <color name="forest_emerald">#3B5339</color>
+    <color name="hairline">#E5E1D8</color>
+    <color name="terracotta">#C94A38</color>
+    <color name="ink_main">#1E293B</color>
+</resources>
