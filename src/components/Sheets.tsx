@@ -25,7 +25,8 @@ import {
   testAiConnection,
   type AiProvider,
 } from '../lib/voiceAi';
-import { IconCheck, IconCopy, IconEye, IconEyeOff, IconKey, IconShare, IconSparkles } from './Icons';
+import { IconBell, IconBellOff, IconCheck, IconCopy, IconEye, IconEyeOff, IconKey, IconMessage, IconShare, IconSparkles } from './Icons';
+import { CHAT_MUTE_EVENT, isChatMuted, setChatMuted } from '../lib/chatHelpers';
 import {
   clearVoiceLogs,
   formatVoiceLogsText,
@@ -311,9 +312,16 @@ export function SettingsSheet({
   const [testingAi, setTestingAi] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; msg: string } | null>(null);
   const [voiceLogs, setVoiceLogs] = useState<VoiceLogEntry[]>(() => getVoiceLogs());
+  const [chatMuted, setChatMutedState] = useState<boolean>(isChatMuted);
   const aiBlockRef = useRef<HTMLElement>(null);
   const cats = sortedCategories(state.categories);
   const link = familyLink(familyId);
+
+  useEffect(() => {
+    const syncMute = () => setChatMutedState(isChatMuted());
+    window.addEventListener(CHAT_MUTE_EVENT, syncMute);
+    return () => window.removeEventListener(CHAT_MUTE_EVENT, syncMute);
+  }, []);
 
   useEffect(() => {
     const syncLogs = () => setVoiceLogs(getVoiceLogs());
@@ -447,6 +455,37 @@ export function SettingsSheet({
           onChange={(e) => setName(e.target.value)}
           onBlur={() => setMyName(name)}
         />
+      </section>
+
+      <section className="settings-block">
+        <div className="ai-settings-header">
+          <IconMessage className="w-4 h-4 text-emerald-600 shrink-0" />
+          <h3>התראות וצ&apos;אט סופר</h3>
+        </div>
+        <div className="settings-toggle-row">
+          <div className="settings-toggle-copy">
+            <div className="settings-toggle-title">צליל והתראות צ&apos;אט במכשיר הזה</div>
+            <p className="muted">כשמתקבלת הודעה, שאלה או תמונה מהמדף</p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!chatMuted}
+            className={`settings-switch ${!chatMuted ? 'is-on' : ''}`}
+            onClick={() => {
+              const next = !chatMuted;
+              setChatMuted(next);
+              setChatMutedState(next);
+              onToast(next ? "צליל צ'אט הושתק במכשיר הזה" : "צליל צ'אט הופעל");
+            }}
+            aria-label="הפעלת צליל והתראות צ'אט"
+          >
+            <span className="settings-switch-icon" aria-hidden="true">
+              {chatMuted ? <IconBellOff className="w-3.5 h-3.5" /> : <IconBell className="w-3.5 h-3.5" />}
+            </span>
+            <span className="settings-switch-label">{chatMuted ? 'מושתק' : 'פעיל'}</span>
+          </button>
+        </div>
       </section>
 
       <section

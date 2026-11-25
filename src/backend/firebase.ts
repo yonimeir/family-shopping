@@ -1,6 +1,7 @@
 import { getApp, getApps, initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously } from 'firebase/auth';
 import {
+  arrayUnion,
   collection,
   deleteDoc,
   doc,
@@ -15,7 +16,16 @@ import {
   type Firestore,
 } from 'firebase/firestore';
 import { SEED_CATEGORIES, SEED_ITEMS } from '../data/seed';
-import type { AppState, Backend, CatalogItem, Category, ListEntry } from '../types';
+import { appendAndCapChat, MAX_CHAT_MESSAGES, MAX_CHAT_PHOTOS } from '../lib/chatHelpers';
+import type {
+  AppState,
+  Backend,
+  CatalogItem,
+  Category,
+  ChatMessage,
+  ListEntry,
+  ShopperPresence,
+} from '../types';
 import { firebaseConfig } from './config';
 
 export async function createFirebaseBackend(familyId: string): Promise<Backend> {
@@ -51,6 +61,8 @@ export async function createFirebaseBackend(familyId: string): Promise<Backend> 
     categories: SEED_CATEGORIES,
     catalog: { ...baseCatalog },
     list: {},
+    chat: [],
+    shopper: null,
   };
 
   return {
@@ -59,6 +71,8 @@ export async function createFirebaseBackend(familyId: string): Promise<Backend> 
       let customCatalog: Record<string, CatalogItem> = {};
       let currentList: Record<string, ListEntry> = {};
       let categories = SEED_CATEGORIES;
+      let chat: ChatMessage[] = [];
+      let shopper: ShopperPresence | null = null;
 
       const push = (pendingWrites = false) => {
         latest = {
@@ -66,6 +80,8 @@ export async function createFirebaseBackend(familyId: string): Promise<Backend> 
           categories,
           catalog: { ...baseCatalog, ...customCatalog },
           list: currentList,
+          chat,
+          shopper,
         };
         cb(latest);
         onSync?.(!navigator.onLine ? 'offline' : pendingWrites ? 'pending' : 'synced');
@@ -78,13 +94,22 @@ export async function createFirebaseBackend(familyId: string): Promise<Backend> 
       window.addEventListener('online', onNet);
       window.addEventListener('offline', onNet);
 
-      // Listen to family config (custom category orders)
+      // Listen to family config (custom category orders, ephemeral chat, active shopper)
       const u1 = onSnapshot(
         familyRef,
         { includeMetadataChanges: true },
         (snap) => {
-          if (snap.exists() && snap.data()?.categories) {
-            categories = snap.data().categories as Category[];
+          const data = snap.exists() ? snap.data() : undefined;
+          if (data) {
+            if (data.categories) {
+              categories = data.categories as Category[];
+            }
+            if (Array.isArray(data.chat)) {
+              chat = [...(data.chat as ChatMessage[])].sort((a, b) => a.createdAt - b.createdAt);
+            } else if ('chat' in data) {
+              chat = [];
+            }
+            shopper = (data.shopper as ShopperPresence | null) ?? null;
           }
           push(snap.metadata.hasPendingWrites);
         },
@@ -189,9 +214,40 @@ export async function createFirebaseBackend(familyId: string): Promise<Backend> 
             b.delete(doc(listCol, e.itemId));
           }
         }
+        b.set(familyRef, { chat: [], shopper: null }, { merge: true });
         await b.commit();
       } catch (err) {
         console.error('Failed to checkout:', err);
+      }
+    },
+
+    sendChatMessage: async (msg) => {
+      try {
+        const existingPhotos = latest.chat.filter((m) => Boolean(m.photoDataUrl)).length;
+        const totalPhotos = existingPhotos + (msg.photoDataUrl ? 1 : 0);
+        if (latest.chat.length + 1 <= MAX_CHAT_MESSAGES && totalPhotos <= MAX_CHAT_PHOTOS) {
+          await setDoc(familyRef, { chat: arrayUnion(msg) }, { merge: true });
+        } else {
+          await setDoc(familyRef, { chat: appendAndCapChat(latest.chat, msg) }, { merge: true });
+        }
+      } catch (err) {
+        console.error('Failed to send chat message:', err);
+      }
+    },
+
+    clearChat: async () => {
+      try {
+        await setDoc(familyRef, { chat: [] }, { merge: true });
+      } catch (err) {
+        console.error('Failed to clear chat:', err);
+      }
+    },
+
+    setShopper: async (next) => {
+      try {
+        await setDoc(familyRef, { shopper: next }, { merge: true });
+      } catch (err) {
+        console.error('Failed to set shopper:', err);
       }
     },
   };

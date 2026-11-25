@@ -1,7 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createBackend } from '../backend';
 import { SEED_CATEGORIES, SEED_ITEMS } from '../data/seed';
-import type { AppState, Backend, CatalogItem, Category, CheckoutMode, ListEntry, SyncState } from '../types';
+import type {
+  AppState,
+  Backend,
+  CatalogItem,
+  Category,
+  ChatMessage,
+  ChatMessageKind,
+  CheckoutMode,
+  ListEntry,
+  SyncState,
+} from '../types';
+import { stripPhotosForLocalCache } from './chatHelpers';
 import { getDeviceId, getMyName, stepDown, stepUp } from './util';
 
 function getInitialState(familyId: string | null): AppState {
@@ -14,6 +25,8 @@ function getInitialState(familyId: string | null): AppState {
       categories: SEED_CATEGORIES,
       catalog: baseCatalog,
       list: {},
+      chat: [],
+      shopper: null,
     };
   }
   try {
@@ -25,6 +38,8 @@ function getInitialState(familyId: string | null): AppState {
         categories: cached.categories?.length ? cached.categories : SEED_CATEGORIES,
         catalog: { ...baseCatalog, ...(cached.customCatalog || {}) },
         list: cached.list || {},
+        chat: Array.isArray(cached.chat) ? cached.chat : [],
+        shopper: cached.shopper ?? null,
       };
     }
   } catch (e) {
@@ -35,6 +50,8 @@ function getInitialState(familyId: string | null): AppState {
     categories: SEED_CATEGORIES,
     catalog: baseCatalog,
     list: {},
+    chat: [],
+    shopper: null,
   };
 }
 
@@ -61,6 +78,8 @@ export function useStore(familyId: string | null) {
             categories: next.categories,
             customCatalog,
             list: next.list,
+            chat: stripPhotosForLocalCache(next.chat),
+            shopper: next.shopper,
           })
         );
       } catch {
@@ -191,6 +210,48 @@ export function useStore(familyId: string | null) {
       deleteItem: (id: string) => b().deleteCatalogItem(id),
       saveCategories: (cats: Category[]) => b().saveCategories(cats),
       checkout: (mode: CheckoutMode) => b().checkout(mode),
+      sendChatMessage(input: {
+        kind: ChatMessageKind;
+        text: string;
+        itemId?: string;
+        itemName?: string;
+        photoDataUrl?: string;
+        replyToId?: string;
+        replyToPreview?: string;
+      }) {
+        const msg: ChatMessage = {
+          id: `m_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+          kind: input.kind,
+          text: input.text.trim(),
+          senderName: getMyName().trim() || 'בן משפחה',
+          senderDevice: getDeviceId(),
+          createdAt: Date.now(),
+        };
+        if (input.itemId) msg.itemId = input.itemId;
+        if (input.itemName) msg.itemName = input.itemName;
+        if (input.photoDataUrl) msg.photoDataUrl = input.photoDataUrl;
+        if (input.replyToId) msg.replyToId = input.replyToId;
+        if (input.replyToPreview) msg.replyToPreview = input.replyToPreview;
+        void b().sendChatMessage(msg);
+        return msg;
+      },
+      clearChat: () => b().clearChat(),
+      setShopperActive(active: boolean) {
+        const me = getDeviceId();
+        if (active) {
+          return b().setShopper({
+            name: getMyName().trim() || 'בן משפחה',
+            deviceId: me,
+            enteredAt: Date.now(),
+            active: true,
+          });
+        }
+        const cur = stateRef.current.shopper;
+        if (!cur || cur.deviceId === me) {
+          return b().setShopper(null);
+        }
+        return Promise.resolve();
+      },
     }),
     [addToList]
   );

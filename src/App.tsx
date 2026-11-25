@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { CatalogView } from './components/CatalogView';
 import { AddItemSheet, CheckoutSheet, EditItemSheet, NoteSheet, SettingsSheet, ShareSheet } from './components/Sheets';
+import { SuperChat } from './components/SuperChat';
 import { SuperView } from './components/SuperView';
 import { VoiceAssistant } from './components/VoiceAssistant';
 import { RollingNumber, Toast, type ToastData } from './components/ui';
-import { getPendingInviteFromUrl, haptic, resolveFamilyId } from './lib/util';
+import { isShopperActive, SHOPPER_REFRESH_COOLDOWN_MS } from './lib/chatHelpers';
+import { getDeviceId, getPendingInviteFromUrl, haptic, resolveFamilyId } from './lib/util';
 import { consumeAiKeyFromUrlHash } from './lib/voiceAi';
 import { useStore } from './lib/useStore';
 import type { CatalogItem, ListEntry } from './types';
-import { IconHome, IconCart, IconShare, IconSettings } from './components/Icons';
+import { IconHome, IconCart, IconMessage, IconShare, IconSettings } from './components/Icons';
 import fridgeSolo from './assets/fridge-retro-solo.png';
 import fridgeBadge from './assets/fridge-retro-badge.png';
 import { OnboardingModal } from './components/OnboardingModal';
@@ -32,16 +34,30 @@ function consumeInitialVoiceFlag(): boolean {
   return true;
 }
 
+function consumeInitialChatFlag(): boolean {
+  const url = new URL(location.href);
+  if (url.searchParams.get('chat') !== '1') return false;
+  url.searchParams.delete('chat');
+  history.replaceState(null, '', url.toString());
+  return true;
+}
+
 export default function App() {
   const [familyId, setFamilyId] = useState<string | null>(resolveFamilyId);
   const [pendingInvite, setPendingInvite] = useState<string | null>(getPendingInviteFromUrl);
   const { state, sync, kind, actions } = useStore(familyId);
+  const me = useMemo(getDeviceId, []);
   const [mode, setModeRaw] = useState<Mode>(() => (localStorage.getItem('fs:mode') as Mode) || 'home');
   const [enteredAt, setEnteredAt] = useState(() => Number(localStorage.getItem('fs:superEnteredAt')) || Date.now());
   const [sheet, setSheet] = useState<SheetState>(null);
   const [initialVoiceLaunch] = useState<boolean>(consumeInitialVoiceFlag);
+  const [initialChatLaunch] = useState<boolean>(consumeInitialChatFlag);
   const [initialImportedAi] = useState(() => consumeAiKeyFromUrlHash());
   const [autoOpenVoiceTrigger, setAutoOpenVoiceTrigger] = useState(0);
+  const [autoOpenChatTrigger, setAutoOpenChatTrigger] = useState(0);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
+  const [askItemRequest, setAskItemRequest] = useState<{ id: number; item: CatalogItem } | null>(null);
   const [voiceCatalogCmd, setVoiceCatalogCmd] = useState<{
     id: number;
     filter?: 'all' | 'core' | 'cart';
@@ -160,6 +176,30 @@ export default function App() {
     setAutoOpenVoiceTrigger((n) => n + 1);
   }, [initialVoiceLaunch, familyId, state.ready]);
 
+  const autoChatFiredRef = useRef(false);
+  useEffect(() => {
+    if (!initialChatLaunch || !familyId || !state.ready || autoChatFiredRef.current) return;
+    autoChatFiredRef.current = true;
+    setAutoOpenChatTrigger((n) => n + 1);
+  }, [initialChatLaunch, familyId, state.ready]);
+
+  const latestShopperRef = useRef(state.shopper);
+  latestShopperRef.current = state.shopper;
+  useEffect(() => {
+    if (!familyId || !state.ready || mode !== 'super') return;
+    const t = window.setTimeout(() => {
+      const cur = latestShopperRef.current;
+      const needRefresh =
+        !cur ||
+        !cur.active ||
+        (cur.deviceId === me && Date.now() - cur.enteredAt > SHOPPER_REFRESH_COOLDOWN_MS);
+      if (needRefresh) {
+        void actions.setShopperActive(true);
+      }
+    }, 1200);
+    return () => window.clearTimeout(t);
+  }, [familyId, state.ready, mode, me, actions]);
+
   const onProgrammaticScroll = useCallback((collapse: boolean) => {
     ignoreScrollUntilRef.current = performance.now() + 450;
     setHeaderCollapsed(collapse);
@@ -197,6 +237,9 @@ export default function App() {
       const now = Date.now();
       localStorage.setItem('fs:superEnteredAt', String(now));
       setEnteredAt(now);
+      void actions.setShopperActive(true);
+    } else {
+      void actions.setShopperActive(false);
     }
     localStorage.setItem('fs:mode', m);
 
@@ -339,17 +382,37 @@ export default function App() {
             <div className="splash-sub">רגע, בודקים מה חסר…</div>
           </div>
         ) : mode === 'home' ? (
-          <CatalogView
-            state={state}
-            toolbarSlot={slot}
-            onToggle={onToggle}
-            onQty={onQty}
-            onNote={onNote}
-            onEdit={onEdit}
-            onAddNew={onAddNew}
-            onProgrammaticScroll={onProgrammaticScroll}
-            voiceFilterCmd={voiceCatalogCmd}
-          />
+          <>
+            {isShopperActive(state.shopper, me) && state.shopper && (
+              <div className="shopper-live-wrap">
+                <button
+                  type="button"
+                  className="shopper-live-banner"
+                  onClick={() => setAutoOpenChatTrigger((n) => n + 1)}
+                >
+                  <span className="shopper-live-status">
+                    <span className="chat-live-dot" aria-hidden="true" />
+                    <span>{state.shopper.name} נמצא כרגע בסופר</span>
+                  </span>
+                  <span className="shopper-live-cta">
+                    <IconMessage className="w-3.5 h-3.5" />
+                    <span>לצ&apos;אט</span>
+                  </span>
+                </button>
+              </div>
+            )}
+            <CatalogView
+              state={state}
+              toolbarSlot={slot}
+              onToggle={onToggle}
+              onQty={onQty}
+              onNote={onNote}
+              onEdit={onEdit}
+              onAddNew={onAddNew}
+              onProgrammaticScroll={onProgrammaticScroll}
+              voiceFilterCmd={voiceCatalogCmd}
+            />
+          </>
         ) : (
           <SuperView
             state={state}
@@ -357,6 +420,7 @@ export default function App() {
             onTogglePurchased={onTogglePurchased}
             onCheckout={() => setSheet({ kind: 'checkout' })}
             onGoHome={() => setMode('home')}
+            onAskItem={(item) => setAskItemRequest({ id: Date.now(), item })}
           />
         )}
       </div>
@@ -450,17 +514,31 @@ export default function App() {
       )}
 
       {state.ready && (
-        <VoiceAssistant
-          state={state}
-          mode={mode}
-          actions={actions}
-          setMode={setMode}
-          onCatalogCommand={(cmd) => setVoiceCatalogCmd({ id: Date.now(), ...cmd })}
-          onToast={showToast}
-          onOpenAiSettings={() => setSheet({ kind: 'settings', focusSection: 'ai' })}
-          autoOpenTrigger={autoOpenVoiceTrigger}
-          otherSheetOpen={Boolean(sheet)}
-        />
+        <>
+          <VoiceAssistant
+            state={state}
+            mode={mode}
+            actions={actions}
+            setMode={setMode}
+            onCatalogCommand={(cmd) => setVoiceCatalogCmd({ id: Date.now(), ...cmd })}
+            onToast={showToast}
+            onOpenAiSettings={() => setSheet({ kind: 'settings', focusSection: 'ai' })}
+            autoOpenTrigger={autoOpenVoiceTrigger}
+            otherSheetOpen={Boolean(sheet) || chatOpen}
+            onVoiceSheetChange={setVoiceOpen}
+          />
+          <SuperChat
+            state={state}
+            familyId={familyId}
+            mode={mode}
+            actions={actions}
+            onToast={showToast}
+            autoOpenTrigger={autoOpenChatTrigger}
+            askItemRequest={askItemRequest}
+            otherSheetOpen={Boolean(sheet) || voiceOpen}
+            onSheetOpenChange={setChatOpen}
+          />
+        </>
       )}
 
       <Toast toast={toast} onDone={clearToast} />

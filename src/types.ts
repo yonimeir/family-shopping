@@ -35,11 +35,36 @@ export interface ListEntry {
   purchasedAt?: number;
 }
 
+export type ChatMessageKind = 'text' | 'ping' | 'item_question' | 'photo' | 'reply';
+
+export interface ChatMessage {
+  id: string;
+  kind: ChatMessageKind;
+  text: string;
+  senderName: string;
+  senderDevice: string;
+  createdAt: number;
+  itemId?: string;
+  itemName?: string;
+  photoDataUrl?: string;
+  replyToId?: string;
+  replyToPreview?: string;
+}
+
+export interface ShopperPresence {
+  name: string;
+  deviceId: string;
+  enteredAt: number;
+  active: boolean;
+}
+
 export interface AppState {
   ready: boolean;
   categories: Category[];
   catalog: Record<string, CatalogItem>;
   list: Record<string, ListEntry>;
+  chat: ChatMessage[];
+  shopper: ShopperPresence | null;
 }
 
 export type CheckoutMode = 'keepRemaining' | 'resetAll';
@@ -54,6 +79,9 @@ export interface Backend {
   deleteCatalogItem(id: string): Promise<void>;
   saveCategories(categories: Category[]): Promise<void>;
   checkout(mode: CheckoutMode): Promise<void>;
+  sendChatMessage(msg: ChatMessage): Promise<void>;
+  clearChat(): Promise<void>;
+  setShopper(shopper: ShopperPresence | null): Promise<void>;
 }
 
 export type SyncState = 'synced' | 'pending' | 'offline';

@@ -21,6 +21,15 @@
       "icons": [
         { "src": "voice-shortcut.png", "sizes": "192x192", "type": "image/png" }
       ]
+    },
+    {
+      "name": "צ'אט קניות",
+      "short_name": "צ'אט",
+      "description": "פתיחה ישירה של צ'אט הסופר המהיר",
+      "url": "./?chat=1",
+      "icons": [
+        { "src": "logo-v7.png", "sizes": "512x512", "type": "image/png" }
+      ]
     }
   ]
 }

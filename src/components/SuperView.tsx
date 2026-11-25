@@ -14,6 +14,7 @@ import {
   IconClose,
   IconHome,
   IconMapPin,
+  IconMessage,
   IconNote,
   IconSparkles,
 } from './Icons';
@@ -24,6 +25,7 @@ interface Props {
   onTogglePurchased: (itemId: string) => void;
   onCheckout: () => void;
   onGoHome: () => void;
+  onAskItem?: (item: CatalogItem) => void;
 }
 
 interface PassedAlertItem {
@@ -68,7 +70,7 @@ function getPencilVariant(id: string): 0 | 1 | 2 {
   return (Math.abs(hash) % 3) as 0 | 1 | 2;
 }
 
-export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onGoHome }: Props) {
+export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onGoHome, onAskItem }: Props) {
   const [heldPhases, setHeldPhases] = useState<Record<string, StrikePhase>>({});
   const [showDone, setShowDone] = useState(false);
   const [passedAlerts, setPassedAlerts] = useState<PassedAlertItem[]>([]);
@@ -445,6 +447,7 @@ export function SuperView({ state, enteredAt, onTogglePurchased, onCheckout, onG
                     isNew={e.addedAt > enteredAt && e.addedByDevice !== me}
                     isPassedDepartment={passedAlertMap.has(e.itemId)}
                     onTap={tap}
+                    onAskItem={onAskItem}
                   />
                 </div>
               ))}
@@ -512,6 +515,7 @@ function SuperRow({
   isNew,
   isPassedDepartment,
   onTap,
+  onAskItem,
 }: {
   e: ListEntry;
   it: CatalogItem;
@@ -521,6 +525,7 @@ function SuperRow({
   isNew?: boolean;
   isPassedDepartment?: boolean;
   onTap: (id: string) => void;
+  onAskItem?: (item: CatalogItem) => void;
 }) {
   const packshot = getProductPackshot(it.name, it.categoryId);
   const emoji = getItemEmoji(it.name, it.categoryId);
@@ -531,8 +536,7 @@ function SuperRow({
   const pencil = PENCIL_PATHS[getPencilVariant(e.itemId)];
 
   return (
-    <button
-      type="button"
+    <div
       className={[
         'super-item-row',
         e.isPurchased ? 'super-item-done' : '',
@@ -542,67 +546,79 @@ function SuperRow({
       ]
         .filter(Boolean)
         .join(' ')}
-      onClick={() => onTap(e.itemId)}
     >
-      <span className="super-checkbox" aria-hidden="true">
-        <IconCheck className="super-check-svg" />
-      </span>
-      <div className="super-item-thumb">
-        {showImg && !imgLoaded && <span className="packshot-shimmer" aria-hidden="true" />}
-        {!showImg && (
-          <span className="super-item-placeholder" aria-hidden="true">
-            {emoji}
-          </span>
-        )}
-        {showImg && (
-          <img
-            src={packshot!}
-            alt={it.name}
-            loading="lazy"
-            decoding="async"
-            className={`super-item-img ${imgLoaded ? 'super-item-img-loaded' : 'super-item-img-loading'}`}
-            onLoad={() => setImgLoaded(true)}
-            onError={() => setImgError(true)}
-          />
-        )}
-      </div>
-      <div className="super-item-content">
-        <div className="super-item-title-row">
-          <span className="super-item-name font-frank">
-            <span className="super-item-name-text">{it.name}</span>
-          </span>
-          {isPassedDepartment ? (
-            <span className="super-badge-passed" title="המוצר נוסף אחרי שכבר עברת את המחלקה הזו">
-              <IconAlertTriangle className="w-3 h-3 shrink-0" />
-              <span>נוסף אחרי שעברת</span>
-            </span>
-          ) : isNew ? (
-            <span className="super-badge-new">
-              <IconBell className="w-3 h-3 shrink-0" />
-              <span>נוסף מהבית</span>
-            </span>
-          ) : null}
-        </div>
-        {e.notes && (
-          <span className="super-item-note">
-            <IconNote className="inline-block w-3 h-3 me-1 opacity-70" />
-            {e.notes}
-          </span>
-        )}
-      </div>
-      <span className="super-item-qty tabular-nums">{formatQty(e.qty, it.defaultUnit)}</span>
-      {e.addedBy && (
-        <span className="author-chip" title={`נוסף ע"י ${e.addedBy}`}>
-          <span className="author-avatar">{authorInitial}</span>
-          <span className="author-name">{e.addedBy}</span>
+      <button type="button" className="super-item-main" onClick={() => onTap(e.itemId)}>
+        <span className="super-checkbox" aria-hidden="true">
+          <IconCheck className="super-check-svg" />
         </span>
+        <div className="super-item-thumb">
+          {showImg && !imgLoaded && <span className="packshot-shimmer" aria-hidden="true" />}
+          {!showImg && (
+            <span className="super-item-placeholder" aria-hidden="true">
+              {emoji}
+            </span>
+          )}
+          {showImg && (
+            <img
+              src={packshot!}
+              alt={it.name}
+              loading="lazy"
+              decoding="async"
+              className={`super-item-img ${imgLoaded ? 'super-item-img-loaded' : 'super-item-img-loading'}`}
+              onLoad={() => setImgLoaded(true)}
+              onError={() => setImgError(true)}
+            />
+          )}
+        </div>
+        <div className="super-item-content">
+          <div className="super-item-title-row">
+            <span className="super-item-name font-frank">
+              <span className="super-item-name-text">{it.name}</span>
+            </span>
+            {isPassedDepartment ? (
+              <span className="super-badge-passed" title="המוצר נוסף אחרי שכבר עברת את המחלקה הזו">
+                <IconAlertTriangle className="w-3 h-3 shrink-0" />
+                <span>נוסף אחרי שעברת</span>
+              </span>
+            ) : isNew ? (
+              <span className="super-badge-new">
+                <IconBell className="w-3 h-3 shrink-0" />
+                <span>נוסף מהבית</span>
+              </span>
+            ) : null}
+          </div>
+          {e.notes && (
+            <span className="super-item-note">
+              <IconNote className="inline-block w-3 h-3 me-1 opacity-70" />
+              {e.notes}
+            </span>
+          )}
+        </div>
+        <span className="super-item-qty tabular-nums">{formatQty(e.qty, it.defaultUnit)}</span>
+        {e.addedBy && (
+          <span className="author-chip" title={`נוסף ע"י ${e.addedBy}`}>
+            <span className="author-avatar">{authorInitial}</span>
+            <span className="author-name">{e.addedBy}</span>
+          </span>
+        )}
+      </button>
+      {!e.isPurchased && !settled && onAskItem && (
+        <button
+          type="button"
+          className="super-item-ask-btn"
+          onClick={() => onAskItem(it)}
+          aria-label={`שאל בצ'אט על ${it.name}`}
+          title="שאל בצ'אט"
+        >
+          <IconMessage className="w-4 h-4" />
+        </button>
       )}
       <svg className="super-pencil-overlay" viewBox="0 0 320 60" preserveAspectRatio="none" aria-hidden="true">
         <path className="super-pencil-smudge" d={pencil.main} pathLength={100} vectorEffect="non-scaling-stroke" />
         <path className="super-pencil-main" d={pencil.main} pathLength={100} vectorEffect="non-scaling-stroke" />
         <path className="super-pencil-grain" d={pencil.grain} pathLength={100} vectorEffect="non-scaling-stroke" />
       </svg>
-    </button>
+    </div>
   );
 }
 
